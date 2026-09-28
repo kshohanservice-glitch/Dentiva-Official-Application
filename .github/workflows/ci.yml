@@ -76,6 +76,9 @@ jobs:
       - name: Build renderer + main
         run: npm run build
 
+      - name: Rebuild better-sqlite3 for the Electron ABI (main process requires it at startup)
+        run: ./node_modules/.bin/electron-rebuild -f -w better-sqlite3
+
       - name: Install Electron system libraries
         run: |
           set -euo pipefail
@@ -93,6 +96,7 @@ jobs:
           DENTIVA_ACTIVATION_SOURCE: ${{ secrets.DENTIVA_ACTIVATION_SOURCE }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHECK_NAME: 'End-to-end (Electron)'
+          DEBUG: 'pw:browser*'
         run: |
           set +e
           set -o pipefail
@@ -100,11 +104,17 @@ jobs:
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ]; then
             sed -e $'s/\x1b\\[[0-9;]*m//g' -e 's/\r//g' e2e.log > clean-e2e.log || true
+            # shared libraries — always annotated first
+            echo "::error::== ldd electron =="
+            ldd node_modules/electron/dist/electron 2>/dev/null | grep 'not found' | sed 's/^/::error::missing /' || echo "::error::no missing libs from ldd"
+            echo "::error::== electron dist =="
+            ls -la node_modules/electron/dist/ 2>/dev/null | head -n 20 | sed 's/^/::error::/' || echo "::error::no electron dist dir"
             # single compact annotation with the head of the log (newlines as %0A)
-            head -n 60 clean-e2e.log 2>/dev/null | awk 'BEGIN{ORS=""} {printf "%s%s", (NR>1?"%0A":""), $0}' | xargs -0 -I{} echo "::error::{}" || true
-            # full log to the check-run summary (API-readable)
+            head -n 80 clean-e2e.log 2>/dev/null | awk 'BEGIN{ORS=""} {printf "%s%s", (NR>1?"%0A":""), $0}' | xargs -0 -I{} echo "::error::{}" || true
+            # full log to the check-run summary (API-readable) — in-progress job has conclusion==null
             CID=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=50" \
-              -q '[.check_runs[] | select(.name == env.CHECK_NAME)] | first | .id // empty' 2>/dev/null || true)
+              -q '[.check_runs[] | select(.conclusion == null)] | first | .id // empty' 2>/dev/null || true)
+            CID="${CID:-$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=50" -q '[.check_runs[] | select(.name == env.CHECK_NAME)] | first | .id // empty' 2>/dev/null || true)}"
             if [ -n "${CID:-}" ]; then
               { echo '### e2e.log (full, ANSI-stripped)'; echo '```'; cat clean-e2e.log; echo '```';
                 echo '### missing shared libraries'; echo '```';

@@ -2,8 +2,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+// fileURLToPath — new URL().pathname is not a valid path on Windows (/D:/...)
+const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const targets = ['dist', 'release'].map((d) => path.join(repo, d)).filter((d) => fs.existsSync(d));
 
 if (targets.length === 0) {
