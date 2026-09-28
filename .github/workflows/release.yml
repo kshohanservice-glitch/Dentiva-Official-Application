@@ -37,6 +37,13 @@ jobs:
         run: npm test
 
       # ---- Package (npm run pack:win re-runs the build, then electron-builder NSIS) ----
+      - name: Prepare Python for node-gyp (distutils removed in Python 3.12+)
+        shell: pwsh
+        run: |
+          python --version
+          python -m pip install --disable-pip-version-check --upgrade setuptools
+          python -c "import distutils; print('distutils import OK')"
+
       - name: Locate Visual Studio for node-gyp (better-sqlite3 is compiled from source)
         shell: pwsh
         run: |

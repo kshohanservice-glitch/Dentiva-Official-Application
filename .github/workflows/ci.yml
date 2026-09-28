@@ -94,6 +94,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHECK_NAME: 'End-to-end (Electron)'
         run: |
+          set +e
           set -o pipefail
           xvfb-run -a npm run e2e 2>&1 | tee e2e.log
           code=${PIPESTATUS[0]}
