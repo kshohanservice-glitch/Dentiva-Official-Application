@@ -24,8 +24,10 @@ let userDataDir: string | null = null;
 async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
   userDataDir = mkdtempSync(join(tmpdir(), 'dentiva-e2e-'));
   const app = await electron.launch({
-    // dist/main/index.js is produced by `npm run build` before the e2e job.
-    args: ['dist/main/index.js', '--no-sandbox', '--disable-gpu'],
+    // Launch with the repo root as the app path: that is how app.getAppPath()
+    // resolves in the packaged build (app.asar), so renderer/asset paths match
+    // production. Entry point comes from package.json "main": dist/main/index.js.
+    args: [process.cwd(), '--no-sandbox', '--disable-gpu'],
     env: {
       ...process.env,
       // Isolate first-run state on every platform.
