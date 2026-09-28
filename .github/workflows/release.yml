@@ -12,7 +12,7 @@ permissions:
 jobs:
   windows-installer:
     name: Release gates → build → NSIS installer
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
@@ -37,10 +37,26 @@ jobs:
         run: npm test
 
       # ---- Package (npm run pack:win re-runs the build, then electron-builder NSIS) ----
+      - name: Locate Visual Studio for node-gyp (better-sqlite3 is compiled from source)
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe",
+            "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
+          )
+          $vswhere = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $vswhere) { Write-Host "::error::vswhere.exe not found on this runner"; exit 1 }
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { Write-Host "::error::No Visual Studio with VC++ tools found"; exit 1 }
+          Write-Host "Visual Studio with C++ tools: $vs"
+          npm config set msvs_version 2022
+          Write-Host "npm msvs_version -> $(npm config get msvs_version)"
+
       - name: Gate 4 — build + package Dentiva-Pro-Setup-v*.exe
         shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          npm_config_msvs_version: 2022
         run: |
           set -o pipefail
           npm run pack:win 2>&1 | tee pack-win.log
@@ -57,7 +73,7 @@ jobs:
           test -f "$LOG" || LOG=missing
           echo "::error::diagnostics for ${LOG} (pack-win.log exists: $(test -f pack-win.log && echo yes || echo no))"
           if [ -f pack-win.log ]; then
-            sed -e $'s/\x1b\\[[0-9;]*m//g' -e 's/\r//g' pack-win.log | tail -n 250 | sed 's/^/::error::/'
+            sed -e $'s/\x1b\\[[0-9;]*m//g' -e 's/\r//g' pack-win.log | tail -n 40 | sed 's/^/::error::/'
             # publish full tail to the check-run summary (readable via API)
             CID=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=50" \
               -q '[.check_runs[] | select(.name == env.CHECK_NAME)] | first | .id // empty' 2>/dev/null || true)
