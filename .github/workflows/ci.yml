@@ -79,13 +79,29 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 libasound2t64 \
-            || sudo apt-get install -y xvfb libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 libasound2
+          sudo apt-get install -y xvfb libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 libgbm1 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 \
+            libatk-bridge2.0-0 libatk1.0-0 libcups2 libx11-xcb1 libasound2t64 \
+            || sudo apt-get install -y xvfb libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 libgbm1 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libpango-1.0-0 libcairo2 \
+            libatk-bridge2.0-0 libatk1.0-0 libcups2 libx11-xcb1 libasound2
 
       - name: Playwright E2E (activation gate always; full journey with secret)
+        shell: bash
         env:
           DENTIVA_ACTIVATION_SOURCE: ${{ secrets.DENTIVA_ACTIVATION_SOURCE }}
-        run: xvfb-run -a npm run e2e
+        run: |
+          set -o pipefail
+          xvfb-run -a npm run e2e 2>&1 | tee e2e.log
+
+      - name: E2E failure diagnostics (annotations)
+        if: failure()
+        shell: bash
+        run: |
+          echo "::error::--- e2e log tail ---"
+          tail -n 60 e2e.log 2>/dev/null | sed 's/^/::error::/' || echo "::error::no e2e.log produced"
+          echo "::error::--- missing shared libraries (if any) ---"
+          ldd node_modules/electron/dist/electron 2>/dev/null | grep 'not found' | sed 's/^/::error::missing lib /' || echo "::error::ldd check clean" 
 
       - name: Upload Playwright artifacts on failure
         if: failure()

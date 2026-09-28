@@ -44,6 +44,13 @@ jobs:
           set -o pipefail
           npm run pack:win 2>&1 | tee pack-win.log
 
+      - name: Packaging failure diagnostics (annotations)
+        if: failure()
+        shell: bash
+        run: |
+          echo "::error::--- pack-win.log tail ---"
+          tail -n 150 pack-win.log 2>/dev/null | sed 's/^/::error::/' || echo "::error::no pack-win.log produced"
+
       - name: Upload packaging log (always)
         if: always()
         uses: actions/upload-artifact@v4
