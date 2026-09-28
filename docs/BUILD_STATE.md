@@ -58,18 +58,13 @@
 - `.github/workflows/ci.yml` — push/PR to main: code guard → lint → typecheck → static audit → tests → E2E (Xvfb)
 - `.github/workflows/release.yml` — tag `v*` / dispatch: lint → typecheck → tests → `pack:win` → checksums → upload artifact (always) → GitHub Release (tag builds) with `Dentiva-Pro-Setup-v*.exe` + `SHA256SUMS.txt`
 
-## Release attempts so far (Actions)
-- PR **#1** opened (arena branch → main). Tag `v1.0.0` pushed 3 times (each iteration added fixes).
-- CI `verify` job: **PASS** after guard fix (lint + typecheck + static audit + 108 tests on Actions).
-- CI `e2e` job: FAIL at Playwright step (details pending — diagnostics now in check-run summary next run).
-- Release job: gates 1–3 PASS on Windows (lint/typecheck/108 tests); **Gate 4 failed = node-gyp "Could not find any Visual Studio"** while rebuilding better-sqlite3 (Electron ABI 136 has no prebuild in better-sqlite3 v11.10.0 → MSVC compile required; `windows-latest` = Server 2025 image failed VS detection).
-- **Fix committed locally as `24de965` but NOT pushed** (GitHub auth expired mid-run): `runs-on: windows-2022` + vswhere locate step + `msvs_version=2022` + single-step E2E diagnostics that writes the full ANSI-stripped log into the check-run summary (the only reliable log channel from this sandbox — results-receiver + blob storage are blocked).
+## Release outcome (final)
+- **CI (PR): run 36449821131 — success** (guard, lint, typecheck, audit, 108 tests, Electron E2E).
+- **Release (tag v1.0.0 @ 018293c): run 36450442666 — success** on windows-2022 (all gates before pack; MSVC rebuild of better-sqlite3 for Electron ABI 136).
+- **GitHub Release v1.0.0** published with `Dentiva-Pro-Setup-v1.0.0.exe` (93,403,905 bytes) + `SHA256SUMS.txt`; Actions artifact `dentiva-pro-installer` uploaded as fallback.
+- PR #1 (arena branch → main) open with green checks.
+- Final local gates (same commit): lint 0 errors · tsc 0 · audit PASS · guard clean · build PASS · **108/108 tests**.
+- Full evidence: `docs/FINAL_REPORT.md`.
 
-## ⛔ BLOCKED: GitHub connection
-`gh auth status` → "The github.com token in GH_TOKEN is no longer valid" (401). Local work is safe (commit `24de965` on `arena/01a0e807-dentiva-official-application`; local tag `v1.0.0` → `24de965`; remote tag still at `5914a36`).
-
-## Next exact action (after GitHub is reconnected in Arena)
-1. `git push origin arena/01a0e807-dentiva-official-application` then `git push -f origin v1.0.0`.
-2. Watch the two runs: CI (PR) and Release (tag). Read failures via `gh api .../check-runs/{id}/annotations` + `.output.summary` (proven channel).
-3. Expected: Release Gate 4 succeeds on windows-2022 with VS found → `Dentiva-Pro-Setup-v1.0.0.exe` + checksums → GitHub Release; E2E job needs its summary read → fix spec or env per actual error.
-4. On success: record evidence in `docs/FINAL_REPORT.md` (spec §176), refresh this file + traceability (rows 47/48/49 → ✅), final commit/push.
+## Next exact action
+None — release complete. Post-release (user) tasks: merge PR #1; optionally configure the `DENTIVA_ACTIVATION_SOURCE` repo secret (unlocks the E2E full-journey test + real activation verify in CI); manual install/uninstall check on a clean Windows machine per FINAL_REPORT §6.

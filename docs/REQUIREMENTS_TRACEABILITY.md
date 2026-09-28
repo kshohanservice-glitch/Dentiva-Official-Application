@@ -50,9 +50,9 @@ Status legend: ⬜ not started · 🟡 implemented, coverage partial · ✅ impl
 | 44 | Empty/loading/error states everywhere | UX | shared components | manual UI QA | ⛔ |
 | 45 | About (creator, versions, notices) | Admin | pages/Misc.tsx About | purity test: author + email present in product | ✅ |
 | 46 | App icon (multi-res ICO, no clipping) | Assets | build/icon.ico + assets/icons | purity test parses ICO: 16/32/48/128/256 present | ✅ |
-| 47 | CI (guard/lint/typecheck/audit/test/e2e) | CI | .github/workflows/ci.yml | Actions run on push/PR | ✅ |
-| 48 | Release workflow → installer + checksums | Release | .github/workflows/release.yml | tag-triggered run (gates before pack) | 🟡 |
-| 49 | PR workflow for production release | Release | GitHub PR (arena branch → main) | PR link recorded in FINAL_REPORT | 🟡 |
+| 47 | CI (guard/lint/typecheck/audit/test/e2e) | CI | .github/workflows/ci.yml | run 36449821131 **success** (incl. Electron E2E) | ✅ |
+| 48 | Release workflow → installer + checksums | Release | .github/workflows/release.yml | run 36450442666 **success** → Release v1.0.0 (exe 93.4 MB + SHA256SUMS) | ✅ |
+| 49 | PR workflow for production release | Release | GitHub PR (arena branch → main) | PR #1 open, all checks green | ✅ |
 | 50 | Docs set (README, guides, notices, security) | Docs | README, docs/* | review | ✅ |
 | 51 | License/dependency inventory | Docs | docs/THIRD_PARTY_NOTICES.md | generated from actual package tree | ✅ |
 | 52 | No demo data in production build | Purity | — | tests/unit/purity | ✅ |
@@ -65,4 +65,4 @@ Status legend: ⬜ not started · 🟡 implemented, coverage partial · ✅ impl
 | 59 | Financial immutability (reversals, no rewrite) | Billing | reversePayment creates reversing entry + audit | integration reversal + audit chain | ✅ |
 | 60 | Inventory negative-stock guard | Inventory | moveStock hard error on oversell | integration: oversell throws `Insufficient stock` | ✅ |
 
-**Coverage summary: 52 ✅ · 5 🟡 · 3 ⛔ (rows 42–44 manual UI QA; row 57 uninstall checklist) — full matrix evidence in `docs/FINAL_REPORT.md` (spec §172/§176).**
+**Coverage summary: 55 ✅ · 2 🟡 · 3 ⛔ (rows 42–44 manual UI QA; row 57 uninstall checklist) — full matrix evidence in `docs/FINAL_REPORT.md` (spec §172/§176).**
