@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint · typecheck · unit + integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Guard — no 16-digit activation codes in tracked files
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The real activation code must never appear in the repository.
+          # '1234567890123456' is the documented fake used by format tests.
+          hits=$(git grep -nE '[0-9]{16}' -- ':!package-lock.json' | grep -v '1234567890123456' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::16-digit sequences found — the activation code must never be committed:"
+            printf '%s\n' "$hits"
+            exit 1
+          fi
+          echo "OK — no 16-digit activation codes in tracked files."
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Static audit (no TODO/placeholder/stray console in src)
+        run: npm run audit:static
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit + integration tests
+        env:
+          # Optional secret — activation tests fall back to format-only checks when absent.
+          DENTIVA_ACTIVATION_SOURCE: ${{ secrets.DENTIVA_ACTIVATION_SOURCE }}
+        run: npm test
+
+  e2e:
+    name: End-to-end (Electron)
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies (includes Electron runtime)
+        run: npm ci
+
+      - name: Build renderer + main
+        run: npm run build
+
+      - name: Install Electron system libraries
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 libasound2t64 \
+            || sudo apt-get install -y xvfb libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 libasound2
+
+      - name: Playwright E2E (activation gate always; full journey with secret)
+        env:
+          DENTIVA_ACTIVATION_SOURCE: ${{ secrets.DENTIVA_ACTIVATION_SOURCE }}
+        run: xvfb-run -a npm run e2e
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore

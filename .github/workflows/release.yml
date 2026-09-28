@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    name: Release gates → build → NSIS installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ---- Release gates (all must pass before any installer is produced) ----
+      - name: Gate 1 — lint
+        run: npm run lint
+
+      - name: Gate 2 — typecheck
+        run: npm run typecheck
+
+      - name: Gate 3 — unit + integration tests
+        env:
+          DENTIVA_ACTIVATION_SOURCE: ${{ secrets.DENTIVA_ACTIVATION_SOURCE }}
+        run: npm test
+
+      # ---- Package (npm run pack:win re-runs the build, then electron-builder NSIS) ----
+      - name: Gate 4 — build + package Dentiva-Pro-Setup-v*.exe
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run pack:win
+
+      - name: Generate SHA-256 checksums
+        run: npm run checksums
+
+      # ---- Artifacts always uploaded (fallback if a GitHub Release is unavailable) ----
+      - name: Upload installer artifact (fallback deliverable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dentiva-pro-installer
+          path: |
+            release/Dentiva-Pro-Setup-*.exe
+            dist/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      # ---- Tag builds are published as a GitHub Release ----
+      - name: Create GitHub Release with installer + checksums
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/Dentiva-Pro-Setup-*.exe
+            dist/SHA256SUMS.txt
+          generateReleaseNotes: true
+          fail_on_unmatched_files: true

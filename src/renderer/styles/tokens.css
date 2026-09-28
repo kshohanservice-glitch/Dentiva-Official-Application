@@ -1,0 +1,87 @@
+/* Dentiva Pro design tokens — single source of truth for the visual system. */
+:root {
+  /* color — light clinical base */
+  --c-bg: #f4f7fa;
+  --c-surface: #ffffff;
+  --c-surface-2: #f8fafc;
+  --c-surface-3: #eef2f7;
+  --c-border: #e2e8f0;
+  --c-border-strong: #cbd5e1;
+  --c-text: #0f172a;
+  --c-text-2: #475569;
+  --c-text-3: #94a3b8;
+  --c-primary: #0e7490;
+  --c-primary-600: #0e7490;
+  --c-primary-700: #155e75;
+  --c-primary-soft: #e0f2f7;
+  --c-accent: #0f766e;
+  --c-accent-soft: #d1fae5;
+  --c-danger: #dc2626;
+  --c-danger-soft: #fee2e2;
+  --c-warn: #d97706;
+  --c-warn-soft: #fef3c7;
+  --c-ok: #16a34a;
+  --c-ok-soft: #dcfce7;
+  --c-info: #2563eb;
+  --c-info-soft: #dbeafe;
+  --c-sidebar: #0b2733;
+  --c-sidebar-2: #0f3444;
+  --c-sidebar-text: #cfe5ee;
+  --c-focus: rgba(14, 116, 144, 0.35);
+
+  /* typography */
+  --font-ui: 'Inter', 'Noto Sans Bengali', 'Segoe UI', system-ui, sans-serif;
+  --fs-xs: 11.5px;
+  --fs-sm: 12.5px;
+  --fs-md: 13.5px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 22px;
+  --fs-3xl: 27px;
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+
+  /* spacing */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* radius */
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 13px;
+  --r-xl: 18px;
+  --r-full: 999px;
+
+  /* elevation */
+  --sh-1: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --sh-2: 0 2px 8px rgba(15, 23, 42, 0.07);
+  --sh-3: 0 8px 24px rgba(15, 23, 42, 0.1);
+  --sh-4: 0 18px 48px rgba(15, 23, 42, 0.16);
+
+  /* layout */
+  --sidebar-w: 236px;
+  --sidebar-w-collapsed: 64px;
+  --header-h: 56px;
+  --dur-fast: 140ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
