@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  checks: write
 
 jobs:
   windows-installer:
@@ -44,12 +45,31 @@ jobs:
           set -o pipefail
           npm run pack:win 2>&1 | tee pack-win.log
 
-      - name: Packaging failure diagnostics (annotations)
+      - name: Packaging failure diagnostics (annotations + check summary)
         if: failure()
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHECK_NAME: 'Release gates → build → NSIS installer'
         run: |
-          echo "::error::--- pack-win.log tail ---"
-          tail -n 150 pack-win.log 2>/dev/null | sed 's/^/::error::/' || echo "::error::no pack-win.log produced"
+          set -euo pipefail
+          LOG=pack-win.log
+          test -f "$LOG" || LOG=missing
+          echo "::error::diagnostics for ${LOG} (pack-win.log exists: $(test -f pack-win.log && echo yes || echo no))"
+          if [ -f pack-win.log ]; then
+            sed -e $'s/\x1b\\[[0-9;]*m//g' -e 's/\r//g' pack-win.log | tail -n 250 | sed 's/^/::error::/'
+            # publish full tail to the check-run summary (readable via API)
+            CID=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=50" \
+              -q '[.check_runs[] | select(.name == env.CHECK_NAME)] | first | .id // empty' 2>/dev/null || true)
+            if [ -n "${CID:-}" ]; then
+              { echo '### pack-win.log (last 500 lines)'; echo '```'; sed -e $'s/\x1b\\[[0-9;]*m//g' -e 's/\r//g' pack-win.log | tail -n 500; echo '```'; } > /tmp/summary.md
+              jq -n --rawfile body /tmp/summary.md '{output:{title:"Packaging failure log",summary:$body}}' > /tmp/payload.json
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/check-runs/$CID" --input /tmp/payload.json >/dev/null \
+                || echo "::error::failed to patch check-run summary"
+            else
+              echo "::error::could not resolve check-run id for summary"
+            fi
+          fi
 
       - name: Upload packaging log (always)
         if: always()
