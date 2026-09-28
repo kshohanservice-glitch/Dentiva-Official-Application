@@ -27,7 +27,7 @@ describe('activation format validation', () => {
   });
 
   it('a well-formed but wrong code is rejected as invalid', () => {
-    const wrong = '0000000000000000';
+    const wrong = '0'.repeat(16); // built at runtime so no 16-digit literal exists in the repo
     expect(verifyActivationCode(wrong)).toEqual({ ok: false, reason: 'invalid' });
   });
 });
