@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  checks: write
+
+jobs:
+  windows-installer:
+    name: Release gates → build → NSIS installer
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ---- Release gates (all must pass before any installer is produced) ----
+      - name: Gate 1 — lint
+        run: npm run lint
+
+      - name: Gate 2 — typecheck
+        run: npm run typecheck
+
+      - name: Gate 3 — unit + integration tests
+        env:
+          DENTIVA_ACTIVATION_SOURCE: ${{ secrets.DENTIVA_ACTIVATION_SOURCE }}
+        run: npm test
+
+      # ---- Package (npm run pack:win re-runs the build, then electron-builder NSIS) ----
+      - name: Prepare Python for node-gyp (distutils removed in Python 3.12+)
+        shell: pwsh
+        run: |
+          python --version
+          python -m pip install --disable-pip-version-check --upgrade setuptools
+          python -c "import distutils; print('distutils import OK')"
+
+      - name: Locate Visual Studio for node-gyp (better-sqlite3 is compiled from source)
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe",
+            "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
+          )
+          $vswhere = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $vswhere) { Write-Host "::error::vswhere.exe not found on this runner"; exit 1 }
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { Write-Host "::error::No Visual Studio with VC++ tools found"; exit 1 }
+          Write-Host "Visual Studio with C++ tools: $vs"
+          npm config set msvs_version 2022
+          Write-Host "npm msvs_version -> $(npm config get msvs_version)"
+
+      - name: Gate 4 — build + package Dentiva-Pro-Setup-v*.exe
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          npm_config_msvs_version: 2022
+        run: |
+          set -o pipefail
+          npm run pack:win 2>&1 | tee pack-win.log
+
+      - name: Packaging failure diagnostics (annotations + check summary)
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHECK_NAME: 'Release gates → build → NSIS installer'
+        run: |
+          set -euo pipefail
+          LOG=pack-win.log
+          test -f "$LOG" || LOG=missing
+          echo "::error::diagnostics for ${LOG} (pack-win.log exists: $(test -f pack-win.log && echo yes || echo no))"
+          if [ -f pack-win.log ]; then
+            sed -e $'s/\x1b\\[[0-9;]*m//g' -e 's/\r//g' pack-win.log | tail -n 40 | sed 's/^/::error::/'
+            # publish full tail to the check-run summary (readable via API)
+            CID=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=50" \
+              -q '[.check_runs[] | select(.name == env.CHECK_NAME)] | first | .id // empty' 2>/dev/null || true)
+            if [ -n "${CID:-}" ]; then
+              { echo '### pack-win.log (last 500 lines)'; echo '```'; sed -e $'s/\x1b\\[[0-9;]*m//g' -e 's/\r//g' pack-win.log | tail -n 500; echo '```'; } > /tmp/summary.md
+              jq -n --rawfile body /tmp/summary.md '{output:{title:"Packaging failure log",summary:$body}}' > /tmp/payload.json
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/check-runs/$CID" --input /tmp/payload.json >/dev/null \
+                || echo "::error::failed to patch check-run summary"
+            else
+              echo "::error::could not resolve check-run id for summary"
+            fi
+          fi
+
+      - name: Upload packaging log (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pack-win-log
+          path: pack-win.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Generate SHA-256 checksums
+        run: npm run checksums
+
+      # ---- Artifacts always uploaded (fallback if a GitHub Release is unavailable) ----
+      - name: Upload installer artifact (fallback deliverable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dentiva-pro-installer
+          path: |
+            release/Dentiva-Pro-Setup-*.exe
+            dist/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      # ---- Tag builds are published as a GitHub Release ----
+      - name: Create GitHub Release with installer + checksums
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/Dentiva-Pro-Setup-*.exe
+            dist/SHA256SUMS.txt
+          generateReleaseNotes: true
+          fail_on_unmatched_files: true
