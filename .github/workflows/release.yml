@@ -34,7 +34,39 @@ jobs:
       - name: Gate 3 — unit + integration tests
         env:
           DENTIVA_ACTIVATION_SOURCE: ${{ secrets.DENTIVA_ACTIVATION_SOURCE }}
-        run: npm test
+        run: npm test 2>&1 | tee test-run.log
+
+      - name: Test failure diagnostics (annotations + check summary)
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHECK_NAME: 'Release gates → build → NSIS installer'
+        run: |
+          set -uo pipefail
+          LOG=test-run.log
+          test -f "$LOG" || { echo "::error::no test-run.log — Gate 3 may not have produced output"; exit 0; }
+          echo "::error::test-run.log tail (ANSI-stripped)";
+          sed -e $'s/\x1b\\[[0-9;]*m//g' -e 's/\r//g' "$LOG" | grep -E "FAIL|failed|Error|AssertionError|✗|×|Tests  |Test Files" | tail -n 40 | sed 's/^/::error::/'
+          CID=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=50" \
+            -q '[.check_runs[] | select(.name == env.CHECK_NAME)] | first | .id // empty' 2>/dev/null || true)
+          if [ -n "${CID:-}" ]; then
+            { echo '### test-run.log (ANSI-stripped, last 400 lines)'; echo '```'; sed -e $'s/\x1b\\[[0-9;]*m//g' -e 's/\r//g' "$LOG" | tail -n 400; echo '```'; } > /tmp/summary.md
+            jq -n --rawfile body /tmp/summary.md '{output:{title:"Test failure log",summary:$body}}' > /tmp/payload.json
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/check-runs/$CID" --input /tmp/payload.json >/dev/null \
+              || echo "::error::failed to patch check-run summary"
+          else
+            echo "::error::could not resolve check-run id for summary"
+          fi
+
+      - name: Upload test log (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-run-log
+          path: test-run.log
+          retention-days: 7
+          if-no-files-found: ignore
 
       # ---- Package (npm run pack:win re-runs the build, then electron-builder NSIS) ----
       - name: Prepare Python for node-gyp (distutils removed in Python 3.12+)
