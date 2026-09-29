@@ -2,6 +2,7 @@ import { currentDb } from '../db/database';
 import { recordAudit, type ServiceActor } from './common';
 import { getAllSettings } from './settings';
 import { logger } from '../logger';
+import { todayIso } from '../../shared/format';
 import type { NotificationDto } from '../../shared/contract';
 
 /** Real, actionable notifications generated from actual application data. */
@@ -187,6 +188,31 @@ export function generateSystemNotifications(): void {
         entityId: Number(i.id),
         dedupeKey: String(i.id),
       });
+    }
+
+    // Appointment reminders — one daily digest of today's scheduled/confirmed
+    // appointments (FD: the `appointmentReminders` setting was previously read
+    // nowhere). Deduped per day so it surfaces once.
+    if (notif.appointmentReminders !== false) {
+      const today = todayIso();
+      const cnt = db
+        .prepare(
+          `SELECT COUNT(*) AS c FROM appointments
+           WHERE date(start_at) = ? AND status IN ('Scheduled','Confirmed') AND deleted_at IS NULL`,
+        )
+        .get(today) as { c: number };
+      if (cnt.c > 0) {
+        notify({
+          type: 'appointments_today',
+          severity: 'info',
+          title: `Today: ${cnt.c} appointment${cnt.c === 1 ? '' : 's'}`,
+          body: `You have ${cnt.c} scheduled or confirmed appointment${
+            cnt.c === 1 ? '' : 's'
+          } today.`,
+          route: '/appointments',
+          dedupeKey: `appointments-${today}`,
+        });
+      }
     }
 
     if (notif.backupReminders !== false) {

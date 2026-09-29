@@ -15,21 +15,108 @@ export function currentDb(): DB {
   return instance;
 }
 
+/**
+ * Set when `initDatabase` had to quarantine a corrupt database and start a
+ * fresh one. The main process reads this to surface a one-time recovery
+ * dialog to the user (FD-005: a corrupt DB used to cause a silent exit).
+ */
+export let lastRecovery: { from: string; quarantined: string[]; reason: string; at: string } | null = null;
+
+function timestamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${p(d.getMilliseconds())}`;
+}
+
+function quarantineFiles(dbPath: string, reason: string): void {
+  // Unique suffix — a second corruption within the same second must NOT
+  // clobber the earlier quarantine (forensics + the restore dialog rely on
+  // every quarantine surviving).
+  let suffix = `.corrupt-${timestamp()}`;
+  if (fs.existsSync(dbPath + suffix)) {
+    suffix += `-${process.hrtime.bigint() % 1_000_000n}`;
+  }
+  const quarantined: string[] = [];
+  for (const f of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+    try {
+      if (fs.existsSync(f)) {
+        const target = f + suffix;
+        fs.renameSync(f, target);
+        quarantined.push(target);
+        logger.error(`Quarantined ${f} → ${target} (${reason})`);
+      }
+    } catch (err) {
+      logger.error(`Failed to quarantine ${f}: ${String(err)}`);
+    }
+  }
+  lastRecovery = {
+    from: dbPath,
+    quarantined,
+    reason,
+    at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Open (or create) the database, run migrations, verify integrity.
+ *
+ * Corruption recovery: if the existing database fails its integrity check
+ * (power loss mid-write, interrupted restore, disk error), the app attempts
+ * a WAL checkpoint re-check; if that still fails it QUARANTINES the bad files
+ * (renamed, never deleted) and starts a fresh database. The user is told via
+ * a dialog to restore from a backup — the quarantined data stays on disk.
+ */
 export function initDatabase(dbPath: string): DB {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+
+  let db: DB;
+  try {
+    db = openAndCheck(dbPath);
+  } catch (openErr) {
+    // The file could not even be opened (e.g. SQLITE_NOTADB) — quarantine and retry fresh.
+    const msg = openErr instanceof Error ? openErr.message : String(openErr);
+    logger.error('Database open failed — quarantining', { err: msg });
+    quarantineFiles(dbPath, `open failed: ${msg}`);
+    db = openAndCheck(dbPath);
+  }
+
+  runMigrations(db);
+  const integrity = db.pragma('integrity_check', { simple: true });
+  if (integrity !== 'ok') {
+    logger.error(`SQLite integrity check failed: ${integrity}`);
+    db.close();
+    quarantineFiles(dbPath, `integrity check: ${integrity}`);
+    db = openAndCheck(dbPath);
+    runMigrations(db);
+  }
+
+  instance = db;
+  return db;
+}
+
+function openAndCheck(dbPath: string): DB {
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 8000');
   db.pragma('synchronous = NORMAL');
   db.pragma('temp_store = MEMORY');
-  runMigrations(db);
-  const integrity = db.pragma('integrity_check', { simple: true });
+  // If a torn WAL is the problem, a truncate checkpoint may salvage the DB.
+  let integrity = db.pragma('integrity_check', { simple: true });
   if (integrity !== 'ok') {
-    logger.error(`SQLite integrity check failed: ${integrity}`);
-    throw new Error('Database integrity check failed');
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+      integrity = db.pragma('integrity_check', { simple: true });
+    } catch {
+      /* keep original result */
+    }
   }
-  instance = db;
+  if (integrity !== 'ok') {
+    const reason = String(integrity);
+    db.close();
+    quarantineFiles(dbPath, `integrity check: ${reason}`);
+    throw new Error(`Database integrity check failed: ${reason}`);
+  }
   return db;
 }
 

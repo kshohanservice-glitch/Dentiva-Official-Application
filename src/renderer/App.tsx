@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { api, ApiError, useApi, useAppEvents, useAppState } from './lib/api';
 import { AppCtx, type AppStateCtx } from './lib/appState';
+import { applyAppearance, applyFormatPrefs } from './lib/appearance';
 import { ToastProvider, useToast, LoadingState, Button, Input, Field, Icon } from './components/ui';
 import type { AppState } from '@shared/contract';
 import { Shell } from './components/Shell';
@@ -179,6 +180,21 @@ function Inner() {
   useEffect(() => {
     if (data) setOverride(null);
   }, [data]);
+
+  // Format preferences from settings (money decimals / 24h / date style) — FD-007
+  useEffect(() => {
+    if (data) applyFormatPrefs(data.formatPrefs);
+  }, [data]);
+
+  // Appearance settings (theme / density / reduced motion) — FD-011
+  const appearanceQ = useApi('settings.get', { group: 'appearance' }, {
+    enabled: state?.user != null,
+    staleTime: 300_000,
+  });
+  useEffect(() => {
+    const a = appearanceQ.data?.appearance;
+    if (a) return applyAppearance(a as { theme?: string; density?: string; reducedMotion?: string });
+  }, [appearanceQ.data]);
 
   const ctx = useMemo<AppStateCtx | null>(
     () => (state ? { state, refresh } : null),

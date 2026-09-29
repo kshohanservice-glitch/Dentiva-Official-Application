@@ -1,15 +1,47 @@
 /**
  * Formatting utilities — BDT currency, dates, numbers, Bengali-safe text.
  * Locale defaults: Bangladesh (en-BD with Bangla content support).
+ *
+ * Runtime format config (FD-007): the application's format helpers read a
+ * mutable config that the app populates from the canonical settings
+ * (clinic.moneyDecimals, clinic.use24HourTime, general.dateFormat). Until
+ * then, the values below are the product defaults — so the helpers are safe
+ * to use in tests and in the main process without any initialization.
  */
 
 export const CURRENCY_SYMBOL = '৳';
 export const CURRENCY_CODE = 'BDT';
 
-/** Format a money amount as `৳ 1,250.00` (grouping by thousands, 2 decimals). */
-export function formatMoney(amount: number | null | undefined, decimals = 2): string {
+export interface FormatConfig {
+  moneyDecimals: number;
+  use24HourTime: boolean;
+  dateFormat: 'short' | 'long';
+}
+
+const formatConfig: FormatConfig = {
+  moneyDecimals: 2,
+  use24HourTime: false,
+  dateFormat: 'short',
+};
+
+/** Apply user settings to all format helpers (idempotent). */
+export function setFormatConfig(partial: Partial<FormatConfig>): void {
+  if (partial.moneyDecimals !== undefined && Number.isInteger(partial.moneyDecimals)) {
+    formatConfig.moneyDecimals = Math.min(4, Math.max(0, partial.moneyDecimals));
+  }
+  if (partial.use24HourTime !== undefined) formatConfig.use24HourTime = Boolean(partial.use24HourTime);
+  if (partial.dateFormat !== undefined) formatConfig.dateFormat = partial.dateFormat;
+}
+
+export function getFormatConfig(): FormatConfig {
+  return { ...formatConfig };
+}
+
+/** Format a money amount as `৳ 1,250.00` (grouping by thousands; decimals from settings). */
+export function formatMoney(amount: number | null | undefined, decimals = formatConfig.moneyDecimals): string {
   const value = Number.isFinite(amount) ? (amount as number) : 0;
-  const fixed = Math.abs(value).toFixed(decimals);
+  const d = Math.min(4, Math.max(0, decimals));
+  const fixed = Math.abs(value).toFixed(d);
   const [intPart, decPart] = fixed.split('.');
   const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const sign = value < 0 ? '-' : '';
@@ -17,9 +49,10 @@ export function formatMoney(amount: number | null | undefined, decimals = 2): st
 }
 
 /** Compact money without the symbol (for tables that render the symbol once). */
-export function formatAmount(amount: number | null | undefined, decimals = 2): string {
+export function formatAmount(amount: number | null | undefined, decimals = formatConfig.moneyDecimals): string {
   const value = Number.isFinite(amount) ? (amount as number) : 0;
-  const fixed = Math.abs(value).toFixed(decimals);
+  const d = Math.min(4, Math.max(0, decimals));
+  const fixed = Math.abs(value).toFixed(d);
   const [intPart, decPart] = fixed.split('.');
   const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const sign = value < 0 ? '-' : '';
@@ -54,8 +87,11 @@ function pad(n: number): string {
   return n < 10 ? '0' + n : String(n);
 }
 
-/** `2026-09-28` → `28 Sep 2026` */
-export function formatDate(iso: string | null | undefined, style: 'long' | 'short' | 'numeric' = 'short'): string {
+/** `2026-09-28` → `28 Sep 2026` (default style from settings) */
+export function formatDate(
+  iso: string | null | undefined,
+  style: 'long' | 'short' | 'numeric' = formatConfig.dateFormat,
+): string {
   if (!iso) return '—';
   const d = new Date(iso.length <= 10 ? iso + 'T00:00:00' : iso);
   if (Number.isNaN(d.getTime())) return '—';
@@ -68,7 +104,7 @@ export function formatDate(iso: string | null | undefined, style: 'long' | 'shor
 }
 
 /** `2026-09-28T10:30:00` → `28 Sep 2026, 10:30 AM` (12h) or 24h per settings */
-export function formatDateTime(iso: string | null | undefined, use24h = false): string {
+export function formatDateTime(iso: string | null | undefined, use24h = formatConfig.use24HourTime): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
@@ -81,7 +117,7 @@ export function formatDateTime(iso: string | null | undefined, use24h = false): 
   return `${date}, ${h12}:${mins} ${ampm}`;
 }
 
-export function formatTime(iso: string | null | undefined, use24h = false): string {
+export function formatTime(iso: string | null | undefined, use24h = formatConfig.use24HourTime): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';

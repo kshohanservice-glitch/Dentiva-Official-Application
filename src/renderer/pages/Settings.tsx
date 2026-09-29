@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, useApi, useApiMutation, useAppState } from '../lib/api';
 import {
   Badge,
@@ -24,7 +25,31 @@ export function SettingsPage() {
   const { state } = useAppState();
   const perms = state.user?.permissions ?? [];
   const canManage = perms.includes('settings.manage');
-  const [tab, setTab] = useState<TabKey>('clinic');
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Deep-linkable tabs (FD-012: the profile menu used to link to a ?tab=profile
+  // that was silently ignored — it landed on the Clinic tab). `profile` maps to
+  // the self-service Security tab (change password + policy).
+  const tabParam = searchParams.get('tab');
+  const initialTab: TabKey =
+    tabParam === 'preferences' ||
+    tabParam === 'printers' ||
+    tabParam === 'security' ||
+    tabParam === 'data' ||
+    tabParam === 'clinic'
+      ? (tabParam as TabKey)
+      : tabParam === 'profile'
+        ? 'security'
+        : 'clinic';
+  const [tab, setTab] = useState<TabKey>(initialTab);
+
+  const changeTab = (k: string) => {
+    setTab(k as TabKey);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', k === 'clinic' ? 'clinic' : k);
+      return next;
+    });
+  };
 
   return (
     <div className="page">
@@ -39,7 +64,7 @@ export function SettingsPage() {
       />
       <Tabs
         active={tab}
-        onChange={(k) => setTab(k as TabKey)}
+        onChange={(k) => changeTab(k)}
         tabs={[
           { key: 'clinic', label: 'Clinic' },
           { key: 'preferences', label: 'Preferences' },
@@ -62,6 +87,9 @@ export function SettingsPage() {
 function ClinicSection({ canManage }: { canManage: boolean }) {
   const toast = useToast();
   const clinic = useApi('clinic.get', undefined, { staleTime: 15_000 });
+  // Logo is a stored FILE — the renderer can only display it as a data-URL
+  // (FD-006: the raw filesystem path was used as <img src> and never rendered).
+  const logoQ = useApi('clinic.getLogo', undefined, { staleTime: 30_000, refetchInterval: false });
   const [form, setForm] = useState<ClinicInput>({ name: '' });
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
@@ -70,14 +98,18 @@ function ClinicSection({ canManage }: { canManage: boolean }) {
       const { id, ...rest } = clinic.data as ClinicInput & { id: number };
       void id;
       setForm(rest);
-      setLogoPreview(rest.logoPath ?? null);
     }
   }, [clinic.data]);
+
+  useEffect(() => {
+    if (logoQ.data?.dataUrl) setLogoPreview(logoQ.data.dataUrl);
+  }, [logoQ.data]);
 
   const save = useApiMutation('clinic.update', {
     onSuccess: () => {
       toast.push({ kind: 'success', title: 'Clinic profile saved' });
       void clinic.refetch();
+      void logoQ.refetch();
     },
     onError: (e) => toast.push({ kind: 'error', title: 'Save failed', msg: e.message }),
   });
@@ -264,6 +296,18 @@ function PreferencesSection({ canManage }: { canManage: boolean }) {
               ]}
             />
           </Field>
+          <Field label="Reduced motion" hint="Fewer animations; System follows the OS setting">
+            <Select
+              disabled={!canManage}
+              value={String(appearance.reducedMotion ?? 'system')}
+              onChange={(e) => setAppearance((s) => ({ ...s, reducedMotion: e.target.value }))}
+              options={[
+                { value: 'system', label: 'System default' },
+                { value: 'reduce', label: 'Always reduce' },
+                { value: 'never', label: 'Never reduce' },
+              ]}
+            />
+          </Field>
         </div>
         <RowSave canManage={canManage} saving={savingGroup === 'appearance'} onClick={() => void saveGroup(groups[0])} />
       </div>
@@ -284,23 +328,15 @@ function PreferencesSection({ canManage }: { canManage: boolean }) {
               onChange={(e) => setGeneral((s) => ({ ...s, patientCodeDigits: Number(e.target.value) }))}
             />
           </Field>
-          <Field label="Date format">
+          <Field label="Date format" hint="Applied across the app and on printed documents">
             <Select
               disabled={!canManage}
               value={String(general.dateFormat ?? 'short')}
               onChange={(e) => setGeneral((s) => ({ ...s, dateFormat: e.target.value }))}
               options={[
-                { value: 'short', label: 'DD/MM/YYYY' },
-                { value: 'long', label: 'DD Month YYYY' },
+                { value: 'short', label: 'DD MMM YYYY (e.g. 28 Sep 2026)' },
+                { value: 'long', label: 'DD Month YYYY (e.g. 28 September 2026)' },
               ]}
-            />
-          </Field>
-          <Field label="Interface language" hint="English UI; Bengali content is supported everywhere">
-            <Select
-              disabled={!canManage}
-              value={String(general.language ?? 'en')}
-              onChange={(e) => setGeneral((s) => ({ ...s, language: e.target.value }))}
-              options={[{ value: 'en', label: 'English' }]}
             />
           </Field>
         </div>
@@ -311,19 +347,17 @@ function PreferencesSection({ canManage }: { canManage: boolean }) {
             <Field label="Invoice prefix">
               <Input disabled={!canManage} value={String(invoice.prefix ?? 'INV-')} onChange={(e) => setInvoice((s) => ({ ...s, prefix: e.target.value }))} />
             </Field>
-            <Field label="Tax rate %">
-              <Input
-                disabled={!canManage}
-                type="number"
-                step="0.1"
-                value={String(invoice.taxRate ?? 0)}
-                onChange={(e) => setInvoice((s) => ({ ...s, taxRate: Number(e.target.value) }))}
-              />
-            </Field>
-            <Field label="Footer note" className="span-2">
-              <Input disabled={!canManage} value={String(invoice.footerNote ?? '')} onChange={(e) => setInvoice((s) => ({ ...s, footerNote: e.target.value }))} />
-            </Field>
-          </div>
+          <Field label="Default tax rate %" hint="Offered in the invoice editor (the recorded amount is always explicit)">
+            <Input
+              disabled={!canManage}
+              type="number"
+              min={0}
+              max={100}
+              value={String(invoice.taxRate ?? 0)}
+              onChange={(e) => setInvoice((s) => ({ ...s, taxRate: Number(e.target.value) }))}
+            />
+          </Field>
+        </div>
           <RowSave canManage={canManage} saving={savingGroup === 'invoice'} onClick={() => void saveGroup(groups[3])} />
         </div>
       </div>

@@ -33,6 +33,14 @@ export interface PrintClinic {
   footerMessage?: string;
   prescriptionMessage?: string;
   emergencyContact?: string;
+  /** Currency decimals from the canonical settings (clinic.moneyDecimals). */
+  moneyDecimals?: number;
+}
+
+/** Fixed-decimal money rendering that honors the clinic's moneyDecimals setting (FD-007). */
+function money(n: number, decimals?: number): string {
+  const d = Number.isInteger(decimals) ? Math.min(4, Math.max(0, decimals as number)) : 2;
+  return n.toFixed(d);
 }
 
 export function esc(v: unknown): string {
@@ -285,6 +293,7 @@ export interface InvoicePrintData {
 }
 
 export function renderInvoice(data: InvoicePrintData, clinic: PrintClinic, opts: DocOptions): string {
+  const dec = clinic.moneyDecimals;
   const thermal = opts.profile.paperSize === '80mm' || opts.profile.paperSize === '58mm';
   const logo = clinic.logoPath ? `<img src="${fileUrl(clinic.logoPath)}" style="height:${thermal ? 9 : 13}mm;">` : '';
   const header = `
@@ -313,9 +322,9 @@ export function renderInvoice(data: InvoicePrintData, clinic: PrintClinic, opts:
     <tr>
       <td style="padding:4px 3px; border-bottom:1px solid #e2e8f0;">${i + 1}. <span class="bangla">${esc(it.description)}</span></td>
       <td style="padding:4px 3px; border-bottom:1px solid #e2e8f0; text-align:center;">${it.qty}</td>
-      <td style="padding:4px 3px; border-bottom:1px solid #e2e8f0; text-align:right;">${it.unitPrice.toFixed(2)}</td>
-      ${thermal ? '' : `<td style="padding:4px 3px; border-bottom:1px solid #e2e8f0; text-align:right;">${it.discount ? it.discount.toFixed(2) : '—'}</td>`}
-      <td style="padding:4px 3px; border-bottom:1px solid #e2e8f0; text-align:right; font-weight:600;">${it.lineTotal.toFixed(2)}</td>
+      <td style="padding:4px 3px; border-bottom:1px solid #e2e8f0; text-align:right;">${money(it.unitPrice, dec)}</td>
+      ${thermal ? '' : `<td style="padding:4px 3px; border-bottom:1px solid #e2e8f0; text-align:right;">${it.discount ? money(it.discount, dec) : '—'}</td>`}
+      <td style="padding:4px 3px; border-bottom:1px solid #e2e8f0; text-align:right; font-weight:600;">${money(it.lineTotal, dec)}</td>
     </tr>`,
     )
     .join('');
@@ -323,12 +332,12 @@ export function renderInvoice(data: InvoicePrintData, clinic: PrintClinic, opts:
   const totals = `
   <div style="margin-top:${thermal ? 6 : 10}px; display:flex; justify-content:flex-end;">
     <table style="width:${thermal ? 100 : 70}%; font-size:${thermal ? 10.5 : 12.5}px;">
-      <tr><td class="muted" style="padding:2px 4px;">Subtotal</td><td style="text-align:right; padding:2px 4px;">৳ ${data.subtotal.toFixed(2)}</td></tr>
-      ${data.discountAmount ? `<tr><td class="muted" style="padding:2px 4px;">Discount</td><td style="text-align:right; padding:2px 4px;">- ৳ ${data.discountAmount.toFixed(2)}</td></tr>` : ''}
-      ${data.taxAmount ? `<tr><td class="muted" style="padding:2px 4px;">Tax</td><td style="text-align:right; padding:2px 4px;">৳ ${data.taxAmount.toFixed(2)}</td></tr>` : ''}
-      <tr style="border-top:2px solid #0f172a;"><td style="padding:4px; font-weight:700;">TOTAL</td><td style="text-align:right; padding:4px; font-weight:700; font-size:1.1em;">৳ ${data.total.toFixed(2)}</td></tr>
-      <tr><td class="muted" style="padding:2px 4px;">Paid</td><td style="text-align:right; padding:2px 4px;">৳ ${data.paidTotal.toFixed(2)}</td></tr>
-      <tr><td class="muted" style="padding:2px 4px;">Balance Due</td><td style="text-align:right; padding:2px 4px; font-weight:600; color:${data.balance > 0 ? '#b91c1c' : '#15803d'};">৳ ${data.balance.toFixed(2)}</td></tr>
+      <tr><td class="muted" style="padding:2px 4px;">Subtotal</td><td style="text-align:right; padding:2px 4px;">৳ ${money(data.subtotal, dec)}</td></tr>
+      ${data.discountAmount ? `<tr><td class="muted" style="padding:2px 4px;">Discount</td><td style="text-align:right; padding:2px 4px;">- ৳ ${money(data.discountAmount, dec)}</td></tr>` : ''}
+      ${data.taxAmount ? `<tr><td class="muted" style="padding:2px 4px;">Tax</td><td style="text-align:right; padding:2px 4px;">৳ ${money(data.taxAmount, dec)}</td></tr>` : ''}
+      <tr style="border-top:2px solid #0f172a;"><td style="padding:4px; font-weight:700;">TOTAL</td><td style="text-align:right; padding:4px; font-weight:700; font-size:1.1em;">৳ ${money(data.total, dec)}</td></tr>
+      <tr><td class="muted" style="padding:2px 4px;">Paid</td><td style="text-align:right; padding:2px 4px;">৳ ${money(data.paidTotal, dec)}</td></tr>
+      <tr><td class="muted" style="padding:2px 4px;">Balance Due</td><td style="text-align:right; padding:2px 4px; font-weight:600; color:${data.balance > 0 ? '#b91c1c' : '#15803d'};">৳ ${money(data.balance, dec)}</td></tr>
       <tr><td class="muted" style="padding:2px 4px;">Status</td><td style="text-align:right; padding:2px 4px; font-weight:600;">${esc(data.status.toUpperCase())}</td></tr>
     </table>
   </div>`;
@@ -339,7 +348,7 @@ export function renderInvoice(data: InvoicePrintData, clinic: PrintClinic, opts:
         <table class="small" style="margin-top:2px;">${data.payments
           .map(
             (p) =>
-              `<tr><td style="padding:2px 3px; border-bottom:1px dotted #cbd5e1;">${esc(p.paidAt.slice(0, 10))} · ${esc(p.methodLabel)}</td><td style="padding:2px 3px; border-bottom:1px dotted #cbd5e1; text-align:right;">৳ ${p.amount.toFixed(2)}</td></tr>`,
+              `<tr><td style="padding:2px 3px; border-bottom:1px dotted #cbd5e1;">${esc(p.paidAt.slice(0, 10))} · ${esc(p.methodLabel)}</td><td style="padding:2px 3px; border-bottom:1px dotted #cbd5e1; text-align:right;">৳ ${money(p.amount, dec)}</td></tr>`,
           )
           .join('')}</table>
       </div>`
@@ -456,9 +465,9 @@ export function renderPatientSummary(
     ${simpleTable(['Date', 'Code', 'Medicines'], data.prescriptions.map((p) => [p.date, p.code, p.medicines]))}
     ${data.totals.financial ? `
     <h2 style="font-size:12.5px; color:#0e7490; margin:10px 0 4px;">Invoices (${data.invoices.length})</h2>
-    ${simpleTable(['Date', 'No', 'Total', 'Paid', 'Status'], data.invoices.map((i) => [i.date, i.no, i.total.toFixed(2), i.paid.toFixed(2), i.status]))}
+    ${simpleTable(['Date', 'No', 'Total', 'Paid', 'Status'], data.invoices.map((i) => [i.date, i.no, money(i.total, clinic.moneyDecimals), money(i.paid, clinic.moneyDecimals), i.status]))}
     <div style="margin-top:8px; text-align:right; font-weight:600;">
-      Billed ৳ ${data.totals.billed.toFixed(2)} · Paid ৳ ${data.totals.paid.toFixed(2)} · Balance ৳ ${data.totals.balance.toFixed(2)}
+      Billed ৳ ${money(data.totals.billed, clinic.moneyDecimals)} · Paid ৳ ${money(data.totals.paid, clinic.moneyDecimals)} · Balance ৳ ${money(data.totals.balance, clinic.moneyDecimals)}
     </div>` : ''}
   </div>`;
   return docShell(opts, 'summary', inner);

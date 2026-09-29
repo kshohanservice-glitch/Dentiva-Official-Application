@@ -6,9 +6,23 @@
  * and tests must never open real windows anyway — so the renderer-side
  * modules get deterministic no-ops instead.
  */
+/**
+ * Test-controlled dialog results. Tests can override `saveResult` /
+ * `openResult` to exercise the full service path (e.g. a confirmed save
+ * dialog for CSV export) instead of the default "canceled" no-op.
+ */
+export const stubDialog = {
+  saveResult: { canceled: true, filePath: undefined as string | undefined },
+  openResult: { canceled: true, filePaths: [] as string[] },
+  reset() {
+    this.saveResult = { canceled: true, filePath: undefined };
+    this.openResult = { canceled: true, filePaths: [] };
+  },
+};
+
 export const dialog = {
-  showSaveDialog: async () => ({ canceled: true, filePath: undefined as string | undefined }),
-  showOpenDialog: async () => ({ canceled: true, filePaths: [] as string[] }),
+  showSaveDialog: async () => stubDialog.saveResult,
+  showOpenDialog: async () => stubDialog.openResult,
   showMessageBox: async () => ({ response: 0, checkboxChecked: false }),
 };
 

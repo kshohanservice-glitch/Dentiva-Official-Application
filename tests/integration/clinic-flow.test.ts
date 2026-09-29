@@ -1,5 +1,9 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { freshDatabase, teardownDatabase, rmDir } from './helpers';
+import { stubDialog } from '../stubs/electron';
 import { currentDb } from '../../src/main/db/database';
 import { SYSTEM_ACTOR, type ServiceActor } from '../../src/main/services/common';
 import * as setup from '../../src/main/services/setup';
@@ -587,5 +591,40 @@ describe('CSV export guard', () => {
     await expect(
       exportSvc.exportCsv({ userId: 404, username: 'viewer', permissions: ['patient.view'] }, { kind: 'patients' }),
     ).rejects.toMatchObject({ code: 'forbidden' });
+  });
+});
+
+/**
+ * Defect K regression: the appointments CSV emitted a full timestamp in the
+ * Date column and an EMPTY Time column. Both columns must be populated from
+ * start_at ('YYYY-MM-DD HH:MM:SS').
+ */
+describe('CSV export — appointments Date/Time (Defect K)', () => {
+  it('Date and Time columns are both populated', async () => {
+    const outPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dentiva-export-')), 'appointments.csv');
+    stubDialog.saveResult = { canceled: false, filePath: outPath };
+    try {
+      currentDb()
+        .prepare(
+          `INSERT INTO appointments (patient_id, dentist_id, start_at, end_at, duration_min, status, reason)
+           VALUES (?, ?, '2026-09-29 14:35:00', '2026-09-29 15:05:00', 30, 'Scheduled', 'CSV Time regression')`,
+        )
+        .run(patientId, dentistId);
+
+      const res = await exportSvc.exportCsv(SYSTEM_ACTOR, { kind: 'appointments', from: '2026-09-01', to: '2026-09-30' });
+      expect(res.ok).toBe(true);
+      if (!res.ok) throw new Error(res.reason);
+
+      const csv = fs.readFileSync(outPath, 'utf8');
+      const lines = csv.replace(/^\uFEFF/, '').split('\r\n').filter((l) => l.length > 0);
+      expect(lines[0]).toBe('Date,Time,Patient,Dentist,Status,Reason');
+      const row = lines.find((l) => l.includes('CSV Time regression'));
+      expect(row, 'regression row must be in the export').toBeTruthy();
+      const [dateCol, timeCol] = (row as string).split(',');
+      expect(dateCol).toBe('2026-09-29');
+      expect(timeCol).toBe('14:35'); // was '' in v1.0.0 (Defect K)
+    } finally {
+      stubDialog.reset();
+    }
   });
 });

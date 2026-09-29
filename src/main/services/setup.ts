@@ -101,7 +101,12 @@ function imageDimensions(buf: Buffer, mime: string): { w: number; h: number } | 
   return null;
 }
 
-function storeImage(data: string, dir: string, name: string): string {
+/**
+ * Validate (MIME magic + size + minimum dimensions) and store an image from a
+ * base64 data-URL. Shared by the setup wizard (clinic logo, dentist photos)
+ * and Settings → Clinic (logo re-upload, FD-006).
+ */
+export function storeImageFromDataUrl(data: string, dir: string, name: string): string {
   const { buf, mime } = decodeDataUrl(data);
   const dims = imageDimensions(buf, mime);
   if (dims && (dims.w < 32 || dims.h < 32)) {
@@ -112,6 +117,10 @@ function storeImage(data: string, dir: string, name: string): string {
   const target = path.join(dir, `${name}.${ext}`);
   fs.writeFileSync(target, buf);
   return target;
+}
+
+function storeImage(data: string, dir: string, name: string): string {
+  return storeImageFromDataUrl(data, dir, name);
 }
 
 /* --------------------------------- steps --------------------------------- */
@@ -262,9 +271,10 @@ export function setupSaveAdmin(input: AdminAccountInput): { ok: true; step: numb
 export function setupSavePreferences(prefs: SettingsPayload): { ok: true; step: number } {
   const actor = systemActor();
   for (const [group, values] of Object.entries(prefs)) {
-    if (!values || typeof values !== 'object') continue;
-    if (!DEFAULT_SETTINGS[group]) continue;
-    // preferences step may only touch non-critical clinic keys (identity is step 0)
+    if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
+    // preferences step may only touch non-critical clinic keys (identity is step 0).
+    // NOTE: moneyDecimals belongs to the `clinic` group per the canonical registry —
+    // submitting it under `general` is rejected by setSettings (FD-001 regression guard).
     if (group === 'clinic') {
       const allowed = ['use24HourTime', 'moneyDecimals', 'timezone'];
       const filtered: Record<string, unknown> = {};
@@ -272,6 +282,8 @@ export function setupSavePreferences(prefs: SettingsPayload): { ok: true; step: 
       if (Object.keys(filtered).length) setSettings(actor, 'clinic', filtered);
       continue;
     }
+    // Unknown groups/keys or invalid values throw — the wizard must never
+    // silently persist settings the backend doesn't own.
     setSettings(actor, group, values as Record<string, unknown>);
   }
   saveStep('preferences', 4);

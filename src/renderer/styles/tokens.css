@@ -85,3 +85,54 @@
     transition: none !important;
   }
 }
+
+/* ---------- appearance settings (theme / density / motion — FD-011) ---------- */
+
+[data-theme='dark'] {
+  --c-bg: #0b1220;
+  --c-surface: #111b2e;
+  --c-surface-2: #0f1728;
+  --c-surface-3: #1c2942;
+  --c-border: #253450;
+  --c-border-strong: #35486d;
+  --c-text: #e6edf7;
+  --c-text-2: #a9b8cd;
+  --c-text-3: #6d7e9b;
+  --c-primary: #2dd4ee;
+  --c-primary-soft: #113440;
+  --c-accent-soft: #0e2d27;
+  --c-danger-soft: #3d1522;
+  --c-warn-soft: #3b2a11;
+  --c-ok-soft: #11311f;
+  --c-info-soft: #132544;
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --sh-2: 0 2px 8px rgba(0, 0, 0, 0.5);
+  --sh-3: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --sh-4: 0 18px 48px rgba(0, 0, 0, 0.65);
+}
+[data-theme='dark'] body {
+  background: var(--c-bg);
+}
+[data-theme='dark'] .auth-screen {
+  background: radial-gradient(1200px 700px at 20% -10%, #10233b 0%, transparent 55%),
+    radial-gradient(900px 600px at 110% 110%, #0f2b26 0%, transparent 50%), var(--c-bg);
+}
+
+[data-density='compact'] {
+  --fs-xs: 10.5px;
+  --fs-sm: 11.5px;
+  --fs-md: 12.5px;
+  --fs-lg: 13.5px;
+  --fs-xl: 16px;
+  --fs-2xl: 19px;
+  --sp-3: 10px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 20px;
+  --sp-8: 26px;
+}
+
+[data-motion='reduce'] * {
+  animation: none !important;
+  transition: none !important;
+}

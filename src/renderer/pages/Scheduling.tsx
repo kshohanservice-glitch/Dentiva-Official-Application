@@ -393,6 +393,13 @@ function AppointmentEditor({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [conflict, setConflict] = useState<{ id: number; patientName: string; dentistName: string; startAt: string; endAt: string } | null>(null);
   const dentists = useApi('dentists.list', undefined, { enabled: target != null, staleTime: 60_000 });
+  // Clinic scheduling defaults are live settings (appointments.*):
+  // default duration, work start (default time), slot interval (time-step).
+  const apptSettings = useApi('settings.get', { group: 'appointments' }, { enabled: target != null, staleTime: 60_000 });
+  const appt = (apptSettings.data?.appointments ?? {}) as Record<string, unknown>;
+  const defaultDuration = Number(appt.defaultDurationMin ?? 30);
+  const workStart = typeof appt.workStart === 'string' && /^\d{2}:\d{2}$/.test(appt.workStart) ? appt.workStart : '09:00';
+  const slotMinutes = Number(appt.slotIntervalMin ?? 15);
 
   useEffect(() => {
     setConflict(null);
@@ -423,6 +430,14 @@ function AppointmentEditor({
       });
     }
   }, [target]);
+
+  // New appointment defaults follow the clinic's scheduling settings (applied
+  // only while the editor is in "new" mode, so existing values are never touched).
+  useEffect(() => {
+    if (target !== 'new') return;
+    setForm((f) => ({ ...f, time: workStart, durationMin: String(defaultDuration) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apptSettings.data, target]);
 
   const save = useApiMutation('appointments.save', {
     onSuccess: (data) => {
@@ -537,7 +552,13 @@ function AppointmentEditor({
             <Input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
           </Field>
           <Field label="Time" required>
-            <Input type="time" value={form.time} onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))} />
+            {/* step follows the clinic's slot interval (ms) so the picker snaps to slots */}
+            <Input
+              type="time"
+              step={slotMinutes * 60 * 1000}
+              value={form.time}
+              onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
+            />
           </Field>
           <Field label="Duration (min)">
             <Select

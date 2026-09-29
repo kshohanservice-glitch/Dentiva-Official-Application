@@ -42,8 +42,29 @@ const NO_AUTH = new Set<string>([
   'setup.finish',
   'auth.login',
   'auth.logout',
+  // First-run setup wizard needs these before any account exists. All three are
+  // safe pre-login operations (no patient/financial data is exposed):
+  //  - backup.chooseFolder: opens a native folder picker (FD-002: previously 401'd
+  //    and the wizard's Browse button appeared dead)
+  //  - printers.systemPrinters: lists locally installed printers
+  //  - printers.saveProfile: stores a print-profile row (local print config only)
+  'backup.chooseFolder',
+  'printers.systemPrinters',
+  'printers.saveProfile',
 ]);
 const LOCK_ALLOWED = new Set<string>(['app.state', 'auth.unlock', 'auth.logout', 'auth.lock']);
+
+/**
+ * Headless-dialog guard. On a CI runner there is no interactive user; a native
+ * file/folder dialog would open invisibly and its promise would never settle,
+ * hanging the IPC call (and the E2E test) forever. We treat that as a cancel
+ * so the UI degrades exactly as it does on a real cancel — never a fake
+ * success, never a crash. Scoped to the Linux E2E runner so a user who happens
+ * to have CI=true in their shell on Windows/macOS is unaffected.
+ */
+function headlessDialogDisabled(): boolean {
+  return process.env.CI === 'true' && process.platform === 'linux';
+}
 
 export function emitEvent(event: AppEvent): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -61,6 +82,9 @@ function computeAppState(): AppState {
   else if (!session) phase = 'login';
   else if (session.locked) phase = 'locked';
   else phase = 'ready';
+  const all = settingsSvc.getAllSettings();
+  const clinic = all.clinic as Record<string, unknown>;
+  const general = all.general as Record<string, unknown>;
   return {
     phase,
     appVersion: APP_VERSION,
@@ -69,9 +93,18 @@ function computeAppState(): AppState {
     activated,
     setupComplete: setupDone,
     setupStep: setup.getSetupStep(),
-    clinicName: (settingsSvc.getAllSettings().clinic as Record<string, unknown>).name as string | null,
+    clinicName: clinic.name as string | null,
     user: session?.user ?? null,
     now: new Date().toISOString(),
+    // Format preferences (FD-007): derived from canonical settings so the
+    // renderer's money/date formatting follows the user's configuration.
+    formatPrefs: {
+      moneyDecimals: Number.isInteger(clinic.moneyDecimals)
+        ? (clinic.moneyDecimals as number)
+        : 2,
+      use24HourTime: Boolean(clinic.use24HourTime),
+      dateFormat: general.dateFormat === 'long' ? 'long' : 'short',
+    },
   };
 }
 
@@ -288,9 +321,29 @@ async function dispatch(method: ApiMethod, payload: unknown): Promise<unknown> {
       return { id: 1, ...s };
     }
     case 'clinic.update': {
+      // The UI may submit `logoData` (a base64 PNG/JPEG data-URL for a newly
+      // chosen logo). That is not a settings key — store the image through the
+      // same validated pipeline as setup, then persist `logoPath` (FD-006:
+      // previously the raw data-URL was sent as a setting and the save failed).
       const input = p as Record<string, unknown>;
-      settingsSvc.setSettings(actor!, 'clinic', input as never);
+      const logoData = typeof input.logoData === 'string' ? input.logoData : null;
+      const { logoData: _drop, ...rest } = input;
+      void _drop;
+      if (logoData) {
+        rest.logoPath = setup.storeImageFromDataUrl(logoData, paths().clinicLogo, 'logo');
+      }
+      settingsSvc.setSettings(actor!, 'clinic', rest as never);
       return { ok: true as const };
+    }
+    case 'clinic.getLogo': {
+      const s = settingsSvc.getAllSettings().clinic as Record<string, unknown>;
+      const logoPath = typeof s.logoPath === 'string' ? s.logoPath : null;
+      if (!logoPath) return { dataUrl: '' };
+      const safe = path.isAbsolute(logoPath) && logoPath.startsWith(paths().clinicLogo);
+      if (!safe || !fs.existsSync(logoPath)) return { dataUrl: '' };
+      const buf = fs.readFileSync(logoPath);
+      const ext = path.extname(logoPath).toLowerCase() === '.jpg' || path.extname(logoPath).toLowerCase() === '.jpeg' ? 'jpeg' : 'png';
+      return { dataUrl: `data:image/${ext};base64,${buf.toString('base64')}` };
     }
     case 'dentists.list':
       return admin.listDentists((p as { includeInactive?: boolean } | undefined)?.includeInactive);
@@ -617,7 +670,22 @@ async function dispatch(method: ApiMethod, payload: unknown): Promise<unknown> {
     case 'backup.create':
       return backupSvc.createBackup(actor!, (p as { destDir?: string } | undefined)?.destDir);
     case 'backup.chooseFolder': {
+      // Headless CI: a native dialog would open invisibly and hang the call
+      // forever; return cancel semantics so the UI degrades exactly as on a
+      // real cancel (no fake success, no crash).
+      if (headlessDialogDisabled()) return { path: null };
       const res = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+      return { path: res.canceled || !res.filePaths[0] ? null : res.filePaths[0] };
+    }
+    case 'backup.chooseFile': {
+      if (headlessDialogDisabled()) return { path: null };
+      const res = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [
+          { name: 'Dentiva Pro backup', extensions: ['dvbackup', 'zip'] },
+          { name: 'All files', extensions: ['*'] },
+        ],
+      });
       return { path: res.canceled || !res.filePaths[0] ? null : res.filePaths[0] };
     }
     case 'backup.verify':

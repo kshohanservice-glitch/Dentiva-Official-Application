@@ -18,3 +18,5 @@ test-results/
 *.db-shm
 userData/
 scratch/
+# CI E2E fixture (machine-bound: built by scripts/e2e-fixture.mjs on the runner)
+e2e-fixture/

@@ -68,7 +68,12 @@ export async function exportCsv(actor: ServiceActor, input: ExportInput): Promis
              ORDER BY a.start_at`,
           )
           .all(from, to) as Record<string, unknown>[]
-      ).map((r) => [r.start_at, '', r.full_name, r.dentist, r.status, r.reason]);
+      ).map((r) => {
+        // start_at is 'YYYY-MM-DD HH:MM:SS' — split into the Date + Time columns
+        // (the Time column used to be emitted empty — audit Defect K).
+        const start = String(r.start_at ?? '');
+        return [start.slice(0, 10), start.slice(11, 16), r.full_name, r.dentist, r.status, r.reason];
+      });
       name = 'appointments';
       break;
     }

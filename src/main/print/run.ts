@@ -3,6 +3,7 @@ import path from 'node:path';
 import { BrowserWindow, app } from 'electron';
 import { currentDb } from '../db/database';
 import { logger } from '../logger';
+import { paths } from '../paths';
 import { requirePermission, ServiceError, type ServiceActor } from '../services/common';
 import {
   docShell,
@@ -98,6 +99,7 @@ export function getClinic(): PrintClinic {
     footerMessage: String(obj.footerMessage ?? ''),
     prescriptionMessage: String(obj.prescriptionMessage ?? ''),
     emergencyContact: String(obj.emergencyContact ?? ''),
+    moneyDecimals: Number.isInteger(obj.moneyDecimals) ? (obj.moneyDecimals as number) : 2,
   };
 }
 
@@ -469,10 +471,8 @@ async function withPrintWindow<T>(fn: (win: BrowserWindow) => Promise<T>): Promi
 export async function runPrint(actor: ServiceActor, input: PrintRunInput): Promise<PrintRunResult> {
   const payload = buildPrintHtml(actor, input);
   const profile = getProfile(input.profileId);
-  const htmlPath = path.join(
-    process.env.DENTIVA_RUNTIME_DIR || path.join(app.getPath('userData'), 'runtime'),
-    `print-${Date.now()}.html`,
-  );
+  // Consistent with the rest of the app: the runtime dir under the configured user-data dir.
+  const htmlPath = path.join(paths().runtime, `print-${Date.now()}.html`);
   fs.mkdirSync(path.dirname(htmlPath), { recursive: true });
   fs.writeFileSync(htmlPath, payload.html, 'utf8');
 

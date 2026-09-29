@@ -1472,16 +1472,21 @@ table.data th.center {
   text-decoration: line-through;
 }
 
-/* setup / auth screens */
+/* setup / auth screens
+   FD-004: the screen is a VIEWPORT-CLAMPED scroll container. The card uses
+   `margin: auto` — vertically centered when it fits, normally scrollable from
+   the top when the viewport is shorter than the content (small laptops,
+   high Windows scaling). `body { overflow: hidden }` therefore never clips
+   wizard content: every button (Save, Browse, Next, Finish) stays reachable. */
 .auth-screen {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  height: 100vh;
+  overflow-y: auto;
   background: radial-gradient(1200px 700px at 20% -10%, #d8f1f7 0%, transparent 55%),
     radial-gradient(900px 600px at 110% 110%, #d5f3ec 0%, transparent 50%), var(--c-bg);
   padding: 24px;
-  overflow-y: auto;
+}
+.auth-screen > .auth-card {
+  margin: auto;
 }
 .auth-card {
   width: 440px;

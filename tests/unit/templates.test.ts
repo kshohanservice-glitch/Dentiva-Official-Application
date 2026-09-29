@@ -175,6 +175,31 @@ describe('renderInvoice', () => {
     const html = renderInvoice({ ...inv, patientName: '<img src=x>' }, clinic, opts);
     expect(html).not.toContain('<img src=x>');
   });
+
+  /**
+   * FD-007 regression: `clinic.moneyDecimals` must drive EVERY money cell in
+   * the invoice (not just the total). v1.0.0 always printed 2 decimals.
+   */
+  it('honors moneyDecimals=0 for all money cells', () => {
+    const html = renderInvoice(inv, { ...clinic, moneyDecimals: 0 }, opts);
+    expect(html).toContain('>1400<'); // line total cell (no currency symbol)
+    expect(html).toContain('৳ 1400<'); // subtotal / total / paid / balance cells
+    expect(html).toContain('৳ 700<');
+    expect(html).not.toContain('1400.00');
+    expect(html).not.toContain('700.00');
+  });
+
+  it('honors moneyDecimals=4', () => {
+    const html = renderInvoice(inv, { ...clinic, moneyDecimals: 4 }, opts);
+    expect(html).toContain('>1400.0000<');
+    expect(html).toContain('৳ 1400.0000<');
+    expect(html).toContain('৳ 700.0000<');
+  });
+
+  it('defaults to 2 decimals when the setting is absent', () => {
+    const html = renderInvoice(inv, clinic, opts);
+    expect(html).toContain('>1400.00<');
+  });
 });
 
 describe('renderTableReport', () => {

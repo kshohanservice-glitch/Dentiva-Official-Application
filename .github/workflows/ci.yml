@@ -76,6 +76,13 @@ jobs:
       - name: Build renderer + main
         run: npm run build
 
+      - name: Build E2E activation fixture (no customer code required)
+        # Uses the node-ABI better-sqlite3 (built by `npm ci`), so it MUST run
+        # before the Electron-ABI rebuild below. Produces e2e-fixture/userdata
+        # — a pre-activated user-data dir so the full first-run journey runs
+        # even when DENTIVA_ACTIVATION_SOURCE is unavailable.
+        run: node scripts/e2e-fixture.mjs
+
       - name: Rebuild better-sqlite3 for the Electron ABI (main process requires it at startup)
         run: ./node_modules/.bin/electron-rebuild -f -w better-sqlite3
 

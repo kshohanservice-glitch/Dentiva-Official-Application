@@ -208,12 +208,25 @@ export function BackupPage() {
       {canRestore ? (
         <div className="card card-pad">
           <h3 style={{ marginBottom: 10 }}>Restore from a file</h3>
-          <div className="row" style={{ gap: 10, alignItems: 'flex-end' }}>
-            <Field label=".dvbackup path" style={{ flex: 1 }}>
-              <Input value={manualPath} onChange={(e) => setManualPath(e.target.value)} placeholder="C:\Backups\dentiva-2026-09-28.dvbackup" />
+          <div className="row" style={{ gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <Field label=".dvbackup path" style={{ flex: 1, minWidth: 260 }}>
+              <Input value={manualPath} onChange={(e) => setManualPath(e.target.value)} placeholder="C:\Backups\DentivaPro_Backup_….dvbackup" />
             </Field>
-            <Button icon="folder" onClick={() => void chooseFolder()}>
-              Choose folder…
+            {/* FD-008: this used to call the destination-folder picker and
+                appeared to do nothing. It now opens a file picker and fills
+                the path above. */}
+            <Button
+              icon="folder"
+              onClick={async () => {
+                try {
+                  const res = await api('backup.chooseFile');
+                  if (res.path) setManualPath(res.path);
+                } catch (e) {
+                  toast.push({ kind: 'error', title: 'File picker failed', msg: e instanceof Error ? e.message : undefined });
+                }
+              }}
+            >
+              Choose backup file…
             </Button>
             <Button icon="eye" disabled={!manualPath.trim()} onClick={() => void openRestore(manualPath.trim())}>
               Preview

@@ -502,6 +502,7 @@ function PreferencesStep({ busy, setBusy, setError, onSaved }: StepProps) {
   const [backupFolder, setBackupFolder] = useState('');
   const [printer, setPrinter] = useState('');
   const [printers, setPrinters] = useState<{ name: string; isDefault: boolean }[]>([]);
+  const toast = useToast();
 
   useEffect(() => {
     void api('printers.systemPrinters')
@@ -509,14 +510,32 @@ function PreferencesStep({ busy, setBusy, setError, onSaved }: StepProps) {
       .catch(() => setPrinters([]));
   }, []);
 
+  // Folder picker — must never fail silently (FD-002: a 401 here used to make
+  // the button appear dead). Success with no selection (user cancelled) is not
+  // an error; a transport/server failure is surfaced as a toast.
+  const chooseBackupFolder = async () => {
+    try {
+      const res = await api('backup.chooseFolder');
+      if (res.path) setBackupFolder(res.path);
+    } catch (e) {
+      toast.push({
+        kind: 'error',
+        title: 'Folder picker failed',
+        msg: e instanceof Error ? e.message : undefined,
+      });
+    }
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      // Canonical registry ownership: moneyDecimals lives in the `clinic` group.
+      // (v1.0.0 sent it under `general` and the backend rejected the save — FD-001.)
       const prefs: SettingsPayload = {
         security: { autoLockMinutes: autoLock },
-        general: { moneyDecimals: currencyDecimals, dateFormat: 'short', language: 'en' },
+        general: { dateFormat: 'short' },
         clinic: { use24HourTime: use24h, moneyDecimals: currencyDecimals },
         backup: { autoEveryDays: backupEvery, folder: backupFolder },
       };
@@ -587,14 +606,7 @@ function PreferencesStep({ busy, setBusy, setError, onSaved }: StepProps) {
           <Field label="Backup folder" hint="Optional — you can pick it later in Backup & Restore">
             <div className="row">
               <Input value={backupFolder} onChange={(e) => setBackupFolder(e.target.value)} placeholder="Default location" />
-              <Button
-                type="button"
-                icon="folder"
-                onClick={async () => {
-                  const res = await api('backup.chooseFolder');
-                  if (res.path) setBackupFolder(res.path);
-                }}
-              >
+              <Button type="button" icon="folder" onClick={() => void chooseBackupFolder()}>
                 Browse
               </Button>
             </div>

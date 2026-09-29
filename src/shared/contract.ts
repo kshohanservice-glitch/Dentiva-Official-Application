@@ -61,6 +61,16 @@ export interface AppState {
   clinicName: string | null;
   user: SessionUser | null;
   now: string;
+  /**
+   * Format preferences derived from the canonical settings (clinic.moneyDecimals,
+   * clinic.use24HourTime, general.dateFormat) — applied by the renderer on every
+   * state load so every money/date render honors the user's configuration (FD-007).
+   */
+  formatPrefs: {
+    moneyDecimals: number;
+    use24HourTime: boolean;
+    dateFormat: 'short' | 'long';
+  };
 }
 
 /* ---------------------------------- activation ---------------------------------- */
@@ -1234,6 +1244,9 @@ export interface ApiMethods {
   'settings.resetSecurity': { input: DestructiveInput; output: DestructiveResult };
   'clinic.get': { input: void; output: ClinicInput & { id: number } };
   'clinic.update': { input: ClinicInput; output: Ok };
+  /** Returns the stored clinic logo as a data URL for on-screen preview (renderer
+   *  cannot load raw filesystem paths). Empty string when no logo is set. */
+  'clinic.getLogo': { input: void; output: { dataUrl: string } };
   'dentists.list': { input: { includeInactive?: boolean } | undefined; output: DentistDto[] };
   'dentists.create': { input: DentistInput; output: { id: number } };
   'dentists.update': { input: DentistInput; output: Ok };
@@ -1369,6 +1382,8 @@ export interface ApiMethods {
   'backup.list': { input: void; output: BackupRecordDto[] };
   'backup.create': { input: { destDir?: string } | undefined; output: { ok: boolean; path?: string; reason?: string } };
   'backup.chooseFolder': { input: void; output: { path: string | null } };
+  /** Native file picker for a backup archive (restore-from-file). Returns null on cancel. */
+  'backup.chooseFile': { input: void; output: { path: string | null } };
   'backup.verify': { input: { path: string }; output: { valid: boolean; manifest?: BackupManifest; reason?: string } };
   'restore.preview': { input: { path: string }; output: RestorePreview };
   'restore.run': { input: DestructiveInput & { path: string }; output: RestoreResult };
@@ -1415,6 +1430,7 @@ export const API_METHODS: ApiMethod[] = [
   'settings.resetSecurity',
   'clinic.get',
   'clinic.update',
+  'clinic.getLogo',
   'dentists.list',
   'dentists.create',
   'dentists.update',
@@ -1518,6 +1534,7 @@ export const API_METHODS: ApiMethod[] = [
   'backup.list',
   'backup.create',
   'backup.chooseFolder',
+  'backup.chooseFile',
   'backup.verify',
   'restore.preview',
   'restore.run',

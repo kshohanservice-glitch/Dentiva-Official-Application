@@ -8,7 +8,7 @@ import { paths } from '../paths';
 import { logger } from '../logger';
 import { recordAudit, requirePermission, type ServiceActor } from './common';
 import { assertPassword } from './admin';
-import { getAllSettings, setSettings } from './settings';
+import { getAllSettings, setSettings, applyFormatConfigFromSettings } from './settings';
 import { seedSystemData } from '../db/seeds';
 import { systemActor } from './auth';
 import type { BackupManifest, BackupRecordDto, RestorePreview, RestoreResult } from '../../shared/contract';
@@ -25,6 +25,66 @@ export function backupFileName(d = new Date()): string {
   return `DentivaPro_Backup_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(
     d.getMinutes(),
   )}-${pad(d.getSeconds())}.dvbackup`;
+}
+
+const BACKUP_FILE_RE = /^DentivaPro_Backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.dvbackup$/;
+
+/**
+ * Retention (FD-010): keep the newest `keepCount` Dentiva backup files in the
+ * given folder. Safety rails:
+ *   - only files matching the exact Dentiva naming pattern are ever removed;
+ *   - the file just created is protected;
+ *   - files referenced by `backup_records` as pre-restore safety backups are
+ *     protected for the lifetime of the app (they are the only rollback for a
+ *     destructive restore).
+ * Pruning failures are non-fatal (logged by the caller).
+ */
+export function applyRetention(dir: string, keepCount: number, justCreated: string): { removed: string[] } {
+  const keep = Math.max(1, Number.isFinite(keepCount) ? Math.floor(keepCount) : 10);
+  let entries: string[] = [];
+  try {
+    // Only exact-pattern files are ever candidates for pruning. The
+    // just-created file is excluded even if it carries a same-second
+    // collision suffix (which the pattern does not match).
+    entries = fs.readdirSync(dir).filter((f) => BACKUP_FILE_RE.test(f) && f !== justCreated);
+  } catch {
+    return { removed: [] };
+  }
+  const freshInDir = fs.existsSync(path.join(dir, justCreated));
+  const total = entries.length + (freshInDir ? 1 : 0);
+  if (total <= keep) return { removed: [] };
+
+  // Newest first — the filename embeds the timestamp, so lexical order is time order.
+  // After pruning, exactly `keep` backups remain: the fresh file occupies one
+  // keep slot, so the oldest `total - keep` pattern files are removed.
+  entries.sort((a, b) => b.localeCompare(a));
+  const excess = entries.slice(Math.max(0, keep - (freshInDir ? 1 : 0)));
+
+  let protectedNames = new Set<string>();
+  try {
+    const rows = currentDb()
+      .prepare("SELECT path FROM backup_records WHERE note LIKE 'pre-restore%'")
+      .all() as { path: string }[];
+    protectedNames = new Set(rows.map((r) => path.basename(String(r.path))));
+  } catch {
+    /* if we can't consult the record, protect ALL safety-named files */
+  }
+
+  const removed: string[] = [];
+  for (const f of excess) {
+    if (f === justCreated) continue;
+    if (protectedNames.has(f)) continue; // keep more than `keep` rather than lose a safety backup
+    try {
+      fs.rmSync(path.join(dir, f));
+      removed.push(f);
+    } catch {
+      /* unreadable/locked file — leave it, try next */
+    }
+  }
+  if (removed.length) {
+    logger.info(`Retention: removed ${removed.length} old backup(s), keeping ${keep}`, { dir });
+  }
+  return { removed };
 }
 
 function sha256File(file: string): Promise<string> {
@@ -56,7 +116,13 @@ export async function createBackup(
   requirePermission(actor, 'backup.create');
   const settings = getAllSettings().backup as Record<string, unknown>;
   const dir = destDir || (settings.folder as string) || paths().backups;
-  const filename = backupFileName();
+  // Two backups within the same second (double-click, auto+manual) must NOT
+  // silently overwrite each other — append a collision suffix instead.
+  const base = backupFileName();
+  let filename = base;
+  for (let i = 2; fs.existsSync(path.join(dir, filename)); i++) {
+    filename = base.replace(/\.dvbackup$/, `-${i}.dvbackup`);
+  }
   const target = path.join(dir, filename);
   const snapshotPath = path.join(paths().runtime, 'backup-snapshot.db');
   const started = Date.now();
@@ -121,6 +187,15 @@ export async function createBackup(
     // verify the produced archive opens + manifest readable
     const check = await readManifest(target);
     if (!check.valid) throw new Error('Backup verification failed: ' + check.reason);
+
+    // Retention (FD-010): enforce keepCount in the ACTIVE backup folder only,
+    // never touching files outside Dentiva's exact naming pattern and never
+    // removing a pre-restore safety backup that backup_records still references.
+    try {
+      applyRetention(dir, Number(settings.keepCount ?? 10), filename);
+    } catch (retErr) {
+      logger.warn('Retention pruning failed (non-fatal)', { err: String(retErr) });
+    }
 
     const db2 = currentDb();
     db2
@@ -264,7 +339,14 @@ async function readManifest(file: string): Promise<{ valid: boolean; manifest?: 
 async function extractAndVerify(file: string, destDir: string): Promise<{ ok: boolean; reason?: string }> {
   fs.rmSync(destDir, { recursive: true, force: true });
   fs.mkdirSync(destDir, { recursive: true });
-  const zip = await openZip(file);
+  let zip: yauzl.ZipFile;
+  try {
+    zip = await openZip(file);
+  } catch (err) {
+    // Not a readable zip at all (truncated / wrong file) — a failed restore
+    // must return a clean reason, never an unhandled rejection.
+    return { ok: false, reason: `Not a readable backup archive: ${err instanceof Error ? err.message : String(err)}` };
+  }
   const manifestResult = await readManifest(file);
   if (!manifestResult.valid || !manifestResult.manifest) {
     return { ok: false, reason: manifestResult.reason };
@@ -444,6 +526,11 @@ export async function runRestore(
     // re-open + migrate/seed + verify
     initDatabase(p.db);
     seedSystemData(currentDb());
+    try {
+      applyFormatConfigFromSettings(); // restored settings may change format prefs
+    } catch {
+      /* best-effort */
+    }
     const post = currentDb().pragma('integrity_check', { simple: true });
     if (post !== 'ok') throw new Error('Post-restore integrity check failed');
     fs.rmSync(staging, { recursive: true, force: true });

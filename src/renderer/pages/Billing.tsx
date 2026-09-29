@@ -213,6 +213,10 @@ export function InvoiceEditorPage() {
 
   const treatments = useApi('treatments.list', undefined, { staleTime: 60_000 });
   const existing = useApi('invoices.get', { id }, { enabled: !isNew });
+  // Default tax rate is a live setting (invoice.taxRate) — applying it fills the
+  // explicit tax amount; the recorded figure is always what is shown here.
+  const invoiceSettings = useApi('settings.get', { group: 'invoice' }, { staleTime: 60_000 });
+  const taxRate = Number((invoiceSettings.data?.invoice as Record<string, unknown> | undefined)?.taxRate ?? 0);
 
   useEffect(() => {
     if (existing.data) {
@@ -406,8 +410,26 @@ export function InvoiceEditorPage() {
             <Field label="Invoice discount (৳)">
               <Input type="number" min={0} step="0.01" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} />
             </Field>
-            <Field label="Tax (৳)">
-              <Input type="number" min={0} step="0.01" value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} />
+            <Field label="Tax (৳)" hint={taxRate > 0 ? `Clinic default rate: ${taxRate}%` : undefined}>
+              <div className="row" style={{ gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <Input type="number" min={0} step="0.01" value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} />
+                </div>
+                {taxRate > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    type="button"
+                    onClick={() => {
+                      const base = Math.max(0, subtotal - (Number(discountAmount) || 0));
+                      const applied = Math.round(base * taxRate) / 100; // round2
+                      setTaxAmount(applied === 0 ? '0' : String(applied));
+                    }}
+                  >
+                    Apply {taxRate}%
+                  </Button>
+                ) : null}
+              </div>
             </Field>
             <hr />
             <div className="row" style={{ justifyContent: 'space-between', fontSize: 'var(--fs-lg)' }}>
