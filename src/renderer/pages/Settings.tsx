@@ -252,10 +252,14 @@ function PreferencesSection({ canManage }: { canManage: boolean }) {
   ];
 
   const [savingGroup, setSavingGroup] = useState<string | null>(null);
+  // Mutation (not a bare api() call): success invalidates the shared query
+  // cache, so app-wide consumers of settings — e.g. the Appearance query in
+  // App.tsx that applies theme/density/motion — update immediately (FD-011).
+  const saveSettings = useApiMutation('settings.set');
   const saveGroup = async (g: (typeof groups)[number]) => {
     setSavingGroup(g.key);
     try {
-      await api('settings.set', { group: g.key, values: g.state });
+      await saveSettings.mutateAsync({ group: g.key, values: g.state });
       toast.push({ kind: 'success', title: `${g.label} settings saved` });
       void all.refetch();
     } catch (e) {
@@ -785,10 +789,13 @@ function SecuritySection({ canManage }: { canManage: boolean }) {
     }
   };
 
+  // Mutation (not a bare api() call): success invalidates the shared query
+  // cache so app-wide settings consumers update immediately (FD-011).
+  const saveSecurityMut = useApiMutation('settings.set');
   const saveSecurity = async () => {
     setSaving(true);
     try {
-      await api('settings.set', { group: 'security', values: form });
+      await saveSecurityMut.mutateAsync({ group: 'security', values: form });
       toast.push({ kind: 'success', title: 'Security settings saved' });
       void security.refetch();
     } catch (e) {
