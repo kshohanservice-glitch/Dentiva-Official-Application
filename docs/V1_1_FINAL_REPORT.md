@@ -6,35 +6,35 @@
 
 ## RELEASE STATUS
 
-**RELEASE BLOCKED (one release-blocking defect open: FD-019, Windows test-gate failure —
-under active diagnosis).** All product defects (FD-001…FD-018) remain fixed and
-regression-tested; the blocker is in the release pipeline's Windows execution, not in
-verified product behavior on the platforms where the full suite runs green.
-
-Evidence so far (all independently re-verified this session):
+**RELEASE READY — v1.1.0 is published.** GitHub Release `v1.1.0` with
+`Dentiva-Pro-Setup-v1.1.0.exe` (93,382,465 bytes) + `SHA256SUMS.txt`, published
+2026-09-30 by release run **36676031429** on windows-2022 — all gates green **before**
+packaging:
 
 | Gate | Platform | Result |
 |---|---|---|
-| PR CI on final product commit `9b50de7` (run 36610276411) | ubuntu | **PASS** — lint · typecheck · 154/154 tests (1m22s) + real-Electron E2E: activation gate, fixture journey (wizard → login → dashboard → dark theme → backup picker), 900×520 short-viewport (2m22s) |
-| Tag build `v1.1.0` @ `9b50de7` (run 36611121395) | windows-2022 | **FAIL** — Gate 1 lint PASS, Gate 2 typecheck PASS, **Gate 3 (unit + integration tests) FAIL**; packaging/release steps skipped (gated) |
+| PR CI on final product commit `f2573fd` (run on 1703ae3: success; 1703ae3→f2573fd is the FD-019 fix) | ubuntu | **PASS** — lint · typecheck · 154/154 tests + real-Electron E2E (activation gate, fixture journey, 900×520 short-viewport) |
+| Release run **36676031429** (tag `v1.1.0` @ `f2573fd`, windows-2022) | windows-2022 | **PASS** — Gate 1 lint · Gate 2 typecheck · **Gate 3 all 154 tests** · Gate 4 build + NSIS package · SHA-256 checksums · artifact upload · GitHub Release |
 | Same 154-test suite | this sandbox (linux) | **PASS 154/154** |
-| v1.0.0 release build (run 36450442666, 108-test suite) | windows-2022 | PASS (proves the Windows runner + native better-sqlite3 + test harness work) |
 
-Diagnosis state: the failing test's log is not retrievable from the maintenance sandbox
-(GitHub's log-blob host is network-blocked here). Fix applied to the pipeline: `release.yml`
-now tees Gate 3 to `test-run.log`, uploads it as an artifact, and patches the check-run
-summary with the failure tail (commit `700fb8f`, same diagnostics pattern that surfaced the
-FD-011 E2E failure). Re-tag + re-run is pending — blocked on GitHub connectivity dropping
-from this session (token 401); see `BUILD_STATE.md` for the exact resume steps.
+FD-019 (Windows-only test failure) was root-caused from the instrumented run's check-run
+summary (run 36675420978): a failed SQLite open left its file handle open; on Windows the
+corruption-quarantine rename then failed `EBUSY`, leaving the corrupt file in place so the
+app would crash-loop at startup — a genuine Failure-A-class defect on real Windows machines,
+hidden on Linux (POSIX renames open files). Fixed in `f2573fd` (close on failed open +
+bounded rename retry); the startup-recovery regression tests fail on windows-2022 without
+the fix and pass with it.
 
-No installer or GitHub Release has been published for v1.1.0. The tag `v1.1.0` exists at
-`9b50de7` and will be force-moved to the fixed commit once Gate 3 is green on Windows
-(policy: tag only verified commits; the tag build re-runs all gates before packaging).
+Installer integrity: SHA-256 `8f59bb38ac60e0ef18e3ac7cd361e65a1d021e4544947dea1cc5b26681c28a0d`
+(GitHub upload-time digest of the published asset; `SHA256SUMS.txt` SHA-256
+`318135a37c0106a5fbe4fed0338b379fdcc7685da35943e154c154ba36972ac9`). The sandbox's egress
+to GitHub's asset CDN is blocked, so the byte-level re-hash is executed by the field protocol
+(step-by-step with `certutil -hashfile`) rather than claimed here.
 
-Physical clean-machine validation (`PHYSICAL_DEVICE_VALIDATION.md`) remains a documented
+Physical clean-machine validation (`PHYSICAL_DEVICE_VALIDATION.md`) is a documented
 **post-release field step** — it cannot execute in this sandbox (no Windows machine/display);
-the CI layers it would test are already covered by the real-Electron E2E on every PR and by
-the Windows release gates.
+the CI layers it would test are covered by the real-Electron E2E on every PR and by the
+Windows release gates (all green on the tagged commit).
 
 ## DEFECT SUMMARY
 
@@ -58,10 +58,10 @@ the Windows release gates.
 | FD-016 | INFO | Installer unsigned | documented | SHA-256 published; SmartScreen note in field protocol |
 | FD-017 | INFO | Money stored as REAL | documented | round2 in service layer; integer-cents migration not adopted |
 | FD-018 | LOW | Appointments CSV Time column empty (field Defect K) | **FIXED** | `clinic-flow.test.ts` (full export path, Date+Time asserted) |
-| FD-019 | CRITICAL | Release Gate 3 (154-test suite) fails on windows-2022; passes on ubuntu CI + local (same commit, same suite) | **OPEN — diagnosis in progress** | diagnostics instrumentation merged (`700fb8f`); failing test identified via check-summary/log artifact on re-run, then root-cause fix + re-run required |
+| FD-019 | CRITICAL | Windows startup crash-loop: failed SQLite open left its handle open → corruption-quarantine `rename` failed `EBUSY` on Windows (POSIX renames open files, so Linux was green) → corrupt file never quarantined → fresh-DB retry re-opened the same garbage | **FIXED** | `openAndCheck` closes on failure; `quarantineFiles` bounded EBUSY/EPERM/EACCES retry. Regression: `startup-recovery.test.ts` (3 tests) — **failed on windows-2022 pre-fix (run 36675420978), passes post-fix (run 36676031429)** |
 
-**Tally: 19 findings — 15 FIXED, 3 documented INFO (no action required), 1 OPEN (FD-019,
-pipeline/Windows, release-blocking).**
+**Tally: 19 findings — 16 FIXED (incl. FD-019), 3 documented INFO (no action required).
+0 open CRITICAL/HIGH.**
 
 ## What changed in v1.1.0 (root-cause level)
 
@@ -72,7 +72,8 @@ pipeline/Windows, release-blocking).**
 2. **Hardened startup** — logging + user-data configured first; every failure path (bootstrap
    crash, corrupt DB, single-instance lock, renderer crash, uncaught exceptions) is logged
    **and** shown to the user with the log path; corrupt DB is quarantined (never deleted) with
-   a recovery dialog pointing at the restore flow (FD-005).
+   a recovery dialog pointing at the restore flow (FD-005); a failed open releases its SQLite
+   handle before quarantine so the recovery cannot dead-end on Windows file locks (FD-019).
 3. **Live format + appearance** — money/date formatting and theme/density/motion are applied
    per JS runtime from settings (renderer on every state change; main at bootstrap/write/
    restore), so UI, print, and PDF always match the user's choices (FD-007/FD-011).
@@ -102,16 +103,20 @@ pipeline/Windows, release-blocking).**
 | Icon alpha purity (16/24/32/48/64/128/256) | PASS |
 | Activation code | verified against embedded Argon2id verifier (env-only, never stored) |
 | PR CI on `9b50de7` (run 36610276411) | **PASS** — verify job 1m22s, E2E job 2m22s (full journey + 900×520) |
-| Release run 36611121395 (tag v1.1.0, windows-2022) | **FAIL at Gate 3 (tests)** — lint/typecheck PASS; see FD-019 |
+| Release run 36611121395 (tag v1.1.0 @ 9b50de7, windows-2022) | **FAIL at Gate 3 (tests)** — surfaced FD-019 (fixed in `f2573fd`) |
+| Release run 36675420978 (tag v1.1.0 @ 1703ae3, windows-2022) | **FAIL at Gate 3** — instrumented diagnostics identified the exact failure (EBUSY rename in `startup-recovery`) |
+| Release run 36676031429 (tag v1.1.0 @ `f2573fd`, windows-2022) | **PASS** — all gates green (lint · typecheck · 154/154 tests · build+NSIS · checksums · release) |
 
 ## Artifacts & publication (tag `v1.1.0`)
 
-**NOT YET PUBLISHED — blocked on FD-019.** When Gate 3 is green on Windows, the tag build
-produces and publishes, in this order:
+**PUBLISHED** (release run 36676031429, windows-2022, all gates green before packaging):
 
-1. `Dentiva-Pro-Setup-v1.1.0.exe` (NSIS, windows-2022, built **after** all release gates)
-2. `SHA256SUMS.txt` (published alongside; verify before running — installer is unsigned, FD-016)
+1. `Dentiva-Pro-Setup-v1.1.0.exe` — 93,382,465 bytes, SHA-256
+   `8f59bb38ac60e0ef18e3ac7cd361e65a1d021e4544947dea1cc5b26681c28a0d` (NSIS, windows-2022)
+2. `SHA256SUMS.txt` — SHA-256 `318135a37c0106a5fbe4fed0338b379fdcc7685da35943e154c154ba36972ac9`
+   (verify before running — installer is unsigned, FD-016)
 3. GitHub Release `v1.1.0` with both artifacts + fallback Actions artifact
+   (`Dentiva-Pro-Setup-v1.1.0.exe`, `test-run-log`, `pack-win-log`)
 4. PR from `arena/01a0edf6-dentiva-official-application` → `main` with green checks
 
 ## Residual risk & accepted limitations
@@ -137,6 +142,6 @@ produces and publishes, in this order:
 - [x] Test pyramid: 154 unit/integration + 4 E2E scenarios (gate, journey, short-viewport,
       real-code journey when secret present)
 - [x] CI green on final product commit `9b50de7` (run 36610276411: verify + E2E PASS)
-- [ ] Windows release Gate 3 green (FD-019 open — diagnostics instrumentation merged at `700fb8f`; re-tag + re-run pending GitHub connectivity)
-- [ ] Tag build + GitHub Release (gated on the line above)
-- [ ] Field validation per protocol (post-release)
+- [x] Windows release Gate 3 green (FD-019 fixed in `f2573fd`; run 36676031429: 154/154 on windows-2022)
+- [x] Tag build + GitHub Release (run 36676031429: installer + SHA256SUMS published, hashes recorded above)
+- [ ] Field validation per protocol (post-release — owner/field step, 3 devices)
