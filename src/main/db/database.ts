@@ -38,15 +38,29 @@ function quarantineFiles(dbPath: string, reason: string): void {
   }
   const quarantined: string[] = [];
   for (const f of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
-    try {
-      if (fs.existsSync(f)) {
-        const target = f + suffix;
+    if (!fs.existsSync(f)) continue;
+    const target = f + suffix;
+    // Windows: a rename can transiently fail (EBUSY/EPERM) when the OS or
+    // antivirus has not released the handle yet — retry briefly before giving up.
+    for (let attempt = 0; ; attempt++) {
+      try {
         fs.renameSync(f, target);
         quarantined.push(target);
         logger.error(`Quarantined ${f} → ${target} (${reason})`);
+        break;
+      } catch (err) {
+        const e = err as NodeJS.ErrnoException;
+        const retryable =
+          attempt < 10 && (e.code === 'EBUSY' || e.code === 'EPERM' || e.code === 'EACCES');
+        if (!retryable) {
+          logger.error(`Failed to quarantine ${f}: ${String(err)}`);
+          break;
+        }
+        // busy-wait: file-lock release is measured in ms; the whole startup
+        // path stays bounded (<= ~1 s total across all three files).
+        const until = Date.now() + 100;
+        while (Date.now() < until) { /* yield nothing — sync context */ }
       }
-    } catch (err) {
-      logger.error(`Failed to quarantine ${f}: ${String(err)}`);
     }
   }
   lastRecovery = {
@@ -95,29 +109,45 @@ export function initDatabase(dbPath: string): DB {
 }
 
 function openAndCheck(dbPath: string): DB {
-  const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('busy_timeout = 8000');
-  db.pragma('synchronous = NORMAL');
-  db.pragma('temp_store = MEMORY');
-  // If a torn WAL is the problem, a truncate checkpoint may salvage the DB.
-  let integrity = db.pragma('integrity_check', { simple: true });
-  if (integrity !== 'ok') {
-    try {
-      db.pragma('wal_checkpoint(TRUNCATE)');
-      integrity = db.pragma('integrity_check', { simple: true });
-    } catch {
-      /* keep original result */
+  let db: DB | null = null;
+  try {
+    db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    db.pragma('busy_timeout = 8000');
+    db.pragma('synchronous = NORMAL');
+    db.pragma('temp_store = MEMORY');
+    // If a torn WAL is the problem, a truncate checkpoint may salvage the DB.
+    let integrity = db.pragma('integrity_check', { simple: true });
+    if (integrity !== 'ok') {
+      try {
+        db.pragma('wal_checkpoint(TRUNCATE)');
+        integrity = db.pragma('integrity_check', { simple: true });
+      } catch {
+        /* keep original result */
+      }
     }
+    if (integrity !== 'ok') {
+      const reason = String(integrity);
+      quarantineFiles(dbPath, `integrity check: ${reason}`);
+      throw new Error(`Database integrity check failed: ${reason}`);
+    }
+    return db;
+  } catch (err) {
+    // A failed open MUST release its handle before the caller quarantines
+    // (renames) the file: on Windows a file with any open handle cannot be
+    // renamed (EBUSY), so the quarantine would silently fail and the fresh-DB
+    // retry would re-open the same corrupt file — the app would crash-loop at
+    // startup on a real Windows machine. (FD-019.)
+    if (db) {
+      try {
+        db.close();
+      } catch {
+        /* already closed */
+      }
+    }
+    throw err;
   }
-  if (integrity !== 'ok') {
-    const reason = String(integrity);
-    db.close();
-    quarantineFiles(dbPath, `integrity check: ${reason}`);
-    throw new Error(`Database integrity check failed: ${reason}`);
-  }
-  return db;
 }
 
 export function closeDatabase(): void {
