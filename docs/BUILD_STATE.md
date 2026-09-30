@@ -3,7 +3,10 @@
 > Persistent execution state. On "Continue", resume from **Next exact action**.
 
 ## Current phase
-**Phase 9 — v1.1.0 release (all fixes + regression tests complete; CI verification in progress)**
+**Phase 9 — v1.1.0 release: DIAGNOSING Windows-only test-gate failure (FD-019, release-blocking).**
+All product fixes + regression tests complete; PR CI green on `9b50de7`; tag `v1.1.0` pushed but
+the Windows release run failed at Gate 3 (tests). Diagnostics instrumentation merged at `700fb8f`;
+re-tag + re-run pending (GitHub connectivity dropped from this session — token 401).
 
 ## Version
 - `package.json` **1.1.0** · `src/main/version.ts` `APP_VERSION='1.1.0'`, `BUILD_NUMBER='20260929.1'`
@@ -32,8 +35,8 @@
   backup retention with pre-restore protection, restore hardening (clean failure on garbage
   archive, same-second backup name collision), Defect K (appointments CSV Time), Defect FD-013/14
 - ✅ Phase 9a — Regression tests: **154 tests / 16 files, all passing** (was 108 / 9 at v1.0.0)
-- 🟡 Phase 9b — Release: commit → PR → CI (verify + E2E) → tag `v1.1.0` → Windows installer +
-  GitHub Release
+- 🟡 Phase 9b — Release: commit → PR → CI (verify + E2E) ✅ → tag `v1.1.0` ✅ → **Windows test
+  gate FAIL (FD-019) → diagnosing** → Windows installer + GitHub Release (pending)
 
 ## Quality gates (all executed locally, 2026-09-29)
 | Gate | Command | Result |
@@ -86,6 +89,10 @@
   (32-bit BMP entries 16–128, PNG entry 256) — reproducible, no white-matte re-encoding.
 
 ## Known issues
+- **FD-019 (release-blocking):** release Gate 3 (tests) fails on windows-2022; passes ubuntu CI +
+  local, same commit/suite. Cause not yet identifiable (log blob host network-blocked from this
+  sandbox). Diagnostics merged at `700fb8f` (log tee + artifact + check-summary patch). See
+  `docs/V1_1_FINAL_REPORT.md` FD-019 row and §Next exact action.
 - ESLint warnings ×39 are intentional demotions (common query→form-init pattern), see `eslint.config.mjs`.
 - Physical clean-machine Windows validation is a documented manual step
   (`docs/PHYSICAL_DEVICE_VALIDATION.md`) — not executable in this sandbox.
@@ -103,20 +110,39 @@
 - `.github/workflows/ci.yml` — push/PR to main: 16-digit guard → lint → typecheck → static audit →
   tests → E2E (Xvfb): **fixture build (node-ABI) → electron-rebuild → playwright** (activation gate
   always; full journey + short viewport via fixture; real-code journey when secret present)
-- `.github/workflows/release.yml` — tag `v*` / dispatch: lint → typecheck → tests → `pack:win` →
-  checksums → upload artifact (always) → GitHub Release (tag builds) with
-  `Dentiva-Pro-Setup-v1.1.0.exe` + `SHA256SUMS.txt`
+- `.github/workflows/release.yml` — tag `v*` / dispatch: lint → typecheck → tests (**teed to
+  `test-run.log`; on failure: artifact upload + check-run summary patch with failure tail —
+  `700fb8f`**) → `pack:win` → checksums → upload artifact (always) → GitHub Release (tag builds)
+  with `Dentiva-Pro-Setup-v1.1.0.exe` + `SHA256SUMS.txt`
 
 ## Release history
 - **v1.0.0** — GitHub Release published: `Dentiva-Pro-Setup-v1.0.0.exe` (93,403,905 bytes) +
   `SHA256SUMS.txt`; PR #1 green (run 36449821131), tag run 36450442666.
-- **v1.1.0** — in progress: all gates green locally (2026-09-29); CI verification → tag → release.
+- **v1.1.0** — in progress:
+  - PR #2 CI on `9b50de7` (run 36610276411): **PASS** — verify 1m22s + E2E 2m22s (ubuntu).
+  - Tag `v1.1.0` pushed at `9b50de7` → release run **36611121395** (windows-2022): Gate 1 lint
+    PASS, Gate 2 typecheck PASS, **Gate 3 (tests) FAIL** (job 1m58s; packaging skipped).
+    Windows-only failure — same 154 tests pass on ubuntu CI + this sandbox. Log blob host is
+    network-blocked from this sandbox (SSL_ERROR_SYSCALL), so the failure was not yet
+    identifiable.
+  - Diagnostics merged at `700fb8f`: release.yml Gate 3 now `tee`s `test-run.log`, uploads it
+    as artifact `test-run-log`, and patches the check-run summary with the failure tail
+    (pattern proven by the FD-011 E2E diagnostics).
 
 ## Next exact action
-1. Commit all v1.1.0 work on `arena/01a0edf6-dentiva-official-application` and push.
-2. Open/update the PR (→ main); wait for CI (verify + e2e) green.
-3. Tag `v1.1.0` on the merged/CI-green commit → release.yml builds
-   `Dentiva-Pro-Setup-v1.1.0.exe` + `SHA256SUMS.txt` on windows-2022 and publishes the
-   GitHub Release.
-4. Post-release: manual clean-machine validation per `docs/PHYSICAL_DEVICE_VALIDATION.md`
-   (owner/field step); final report `docs/V1_1_FINAL_REPORT.md` updated with CI/release evidence.
+**Blocked on: GitHub authentication from this session (GH_TOKEN 401 — user must reconnect
+GitHub in Arena).** After connectivity returns, in order:
+1. (If needed) push any pending commits on `arena/01a0edf6-dentiva-official-application`.
+2. Force-move the tag to the fixed commit and push:
+   `git tag -f v1.1.0 <commit> && git push -f origin v1.1.0` (re-triggers release.yml).
+   First candidate target: `700fb8f` (diagnostics only; its product code = verified `9b50de7`).
+   If the re-run still fails at Gate 3, read the check-run summary
+   (`gh api repos/kshohanservice-glitch/Dentiva-Official-Application/check-runs?…`) or the
+   `test-run-log` artifact → root-cause the failing test → fix (platform-correct, NO test
+   deletion) → local gates (tsc/eslint/vitest) → commit → force-move tag again → re-run.
+3. When the release run is fully green: confirm GitHub Release `v1.1.0` artifacts
+   (`Dentiva-Pro-Setup-v1.1.0.exe` + `SHA256SUMS.txt`), record the run id + installer size.
+4. Update `docs/V1_1_FINAL_REPORT.md` (FD-019 → FIXED with evidence; status → RELEASE READY),
+   this file, and `docs/RELEASE_READINESS.md`; issue the spec §45 final answer.
+5. Post-release: manual clean-machine validation per `docs/PHYSICAL_DEVICE_VALIDATION.md`
+   (owner/field step).

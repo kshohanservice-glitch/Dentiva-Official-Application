@@ -6,22 +6,35 @@
 
 ## RELEASE STATUS
 
-**RELEASE READY — with two final verifications in flight (both gated, both scheduled):**
-1. **CI on the final commit** (PR checks: 16-digit guard → lint → typecheck → static audit →
-   154 unit/integration tests → Electron E2E on Xvfb incl. the fixture-activated full journey
-   and the 900×520 short-viewport test).
-2. **Tag build** `v1.1.0` on windows-2022 (release.yml re-runs all gates **before** packaging,
-   then produces `Dentiva-Pro-Setup-v1.1.0.exe` + `SHA256SUMS.txt` and the GitHub Release).
+**RELEASE BLOCKED (one release-blocking defect open: FD-019, Windows test-gate failure —
+under active diagnosis).** All product defects (FD-001…FD-018) remain fixed and
+regression-tested; the blocker is in the release pipeline's Windows execution, not in
+verified product behavior on the platforms where the full suite runs green.
 
-No release-blocking defect is unfixed or unregression-tested. Physical clean-machine
-validation (§`PHYSICAL_DEVICE_VALIDATION.md`) is a documented **post-release field step** —
-it cannot execute in this sandbox (no Windows machine/display/installer); the CI layers it
-would test (ABI, fresh-install boot, wizard, pickers) are already covered by the real-Electron
-E2E on every PR.
+Evidence so far (all independently re-verified this session):
 
-**Decision rule:** if CI or the tag build fails, this report is immediately re-issued as
-**RELEASE BLOCKED** with the failure evidence; the tag is removed/not created (policy: never
-tag an unverified commit).
+| Gate | Platform | Result |
+|---|---|---|
+| PR CI on final product commit `9b50de7` (run 36610276411) | ubuntu | **PASS** — lint · typecheck · 154/154 tests (1m22s) + real-Electron E2E: activation gate, fixture journey (wizard → login → dashboard → dark theme → backup picker), 900×520 short-viewport (2m22s) |
+| Tag build `v1.1.0` @ `9b50de7` (run 36611121395) | windows-2022 | **FAIL** — Gate 1 lint PASS, Gate 2 typecheck PASS, **Gate 3 (unit + integration tests) FAIL**; packaging/release steps skipped (gated) |
+| Same 154-test suite | this sandbox (linux) | **PASS 154/154** |
+| v1.0.0 release build (run 36450442666, 108-test suite) | windows-2022 | PASS (proves the Windows runner + native better-sqlite3 + test harness work) |
+
+Diagnosis state: the failing test's log is not retrievable from the maintenance sandbox
+(GitHub's log-blob host is network-blocked here). Fix applied to the pipeline: `release.yml`
+now tees Gate 3 to `test-run.log`, uploads it as an artifact, and patches the check-run
+summary with the failure tail (commit `700fb8f`, same diagnostics pattern that surfaced the
+FD-011 E2E failure). Re-tag + re-run is pending — blocked on GitHub connectivity dropping
+from this session (token 401); see `BUILD_STATE.md` for the exact resume steps.
+
+No installer or GitHub Release has been published for v1.1.0. The tag `v1.1.0` exists at
+`9b50de7` and will be force-moved to the fixed commit once Gate 3 is green on Windows
+(policy: tag only verified commits; the tag build re-runs all gates before packaging).
+
+Physical clean-machine validation (`PHYSICAL_DEVICE_VALIDATION.md`) remains a documented
+**post-release field step** — it cannot execute in this sandbox (no Windows machine/display);
+the CI layers it would test are already covered by the real-Electron E2E on every PR and by
+the Windows release gates.
 
 ## DEFECT SUMMARY
 
@@ -45,8 +58,10 @@ tag an unverified commit).
 | FD-016 | INFO | Installer unsigned | documented | SHA-256 published; SmartScreen note in field protocol |
 | FD-017 | INFO | Money stored as REAL | documented | round2 in service layer; integer-cents migration not adopted |
 | FD-018 | LOW | Appointments CSV Time column empty (field Defect K) | **FIXED** | `clinic-flow.test.ts` (full export path, Date+Time asserted) |
+| FD-019 | CRITICAL | Release Gate 3 (154-test suite) fails on windows-2022; passes on ubuntu CI + local (same commit, same suite) | **OPEN — diagnosis in progress** | diagnostics instrumentation merged (`700fb8f`); failing test identified via check-summary/log artifact on re-run, then root-cause fix + re-run required |
 
-**Tally: 18 findings — 15 FIXED, 3 documented INFO (no action required). 0 open CRITICAL/HIGH.**
+**Tally: 19 findings — 15 FIXED, 3 documented INFO (no action required), 1 OPEN (FD-019,
+pipeline/Windows, release-blocking).**
 
 ## What changed in v1.1.0 (root-cause level)
 
@@ -86,13 +101,18 @@ tag an unverified commit).
 | Production build (typecheck → Vite → esbuild prod) | PASS |
 | Icon alpha purity (16/24/32/48/64/128/256) | PASS |
 | Activation code | verified against embedded Argon2id verifier (env-only, never stored) |
+| PR CI on `9b50de7` (run 36610276411) | **PASS** — verify job 1m22s, E2E job 2m22s (full journey + 900×520) |
+| Release run 36611121395 (tag v1.1.0, windows-2022) | **FAIL at Gate 3 (tests)** — lint/typecheck PASS; see FD-019 |
 
 ## Artifacts & publication (tag `v1.1.0`)
 
-- `Dentiva-Pro-Setup-v1.1.0.exe` (NSIS, windows-2022, built **after** all release gates)
-- `SHA256SUMS.txt` (published alongside; verify before running — installer is unsigned, FD-016)
-- GitHub Release `v1.1.0` with both artifacts + fallback Actions artifact
-- PR from `arena/01a0edf6-dentiva-official-application` → `main` with green checks
+**NOT YET PUBLISHED — blocked on FD-019.** When Gate 3 is green on Windows, the tag build
+produces and publishes, in this order:
+
+1. `Dentiva-Pro-Setup-v1.1.0.exe` (NSIS, windows-2022, built **after** all release gates)
+2. `SHA256SUMS.txt` (published alongside; verify before running — installer is unsigned, FD-016)
+3. GitHub Release `v1.1.0` with both artifacts + fallback Actions artifact
+4. PR from `arena/01a0edf6-dentiva-official-application` → `main` with green checks
 
 ## Residual risk & accepted limitations
 
@@ -116,6 +136,7 @@ tag an unverified commit).
 - [x] No plaintext activation material anywhere (guard on every push; env-only verification)
 - [x] Test pyramid: 154 unit/integration + 4 E2E scenarios (gate, journey, short-viewport,
       real-code journey when secret present)
-- [ ] CI green on final commit (in progress)
+- [x] CI green on final product commit `9b50de7` (run 36610276411: verify + E2E PASS)
+- [ ] Windows release Gate 3 green (FD-019 open — diagnostics instrumentation merged at `700fb8f`; re-tag + re-run pending GitHub connectivity)
 - [ ] Tag build + GitHub Release (gated on the line above)
 - [ ] Field validation per protocol (post-release)
