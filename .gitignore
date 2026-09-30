@@ -1,0 +1,22 @@
+node_modules/
+dist/
+release/
+coverage/
+*.log
+.DS_Store
+.vite/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+# never commit real data or activation material
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+userData/
+scratch/
+# CI E2E fixture (machine-bound: built by scripts/e2e-fixture.mjs on the runner)
+e2e-fixture/

@@ -1,0 +1,135 @@
+/* Base reset + typography for Dentiva Pro */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--c-text);
+  background: var(--c-bg);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+h1 {
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+h2 {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+h3 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+a {
+  color: var(--c-primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--c-border-strong);
+  border-radius: var(--r-full);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 1px;
+}
+::selection {
+  background: var(--c-primary-soft);
+}
+.bangla {
+  font-family: var(--font-ui);
+}
+.muted {
+  color: var(--c-text-2);
+}
+.tiny {
+  font-size: var(--fs-xs);
+}
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+.truncate {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes slideRight {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

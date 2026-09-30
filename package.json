@@ -1,0 +1,111 @@
+{
+  "name": "dentiva-pro",
+  "productName": "Dentiva Pro",
+  "version": "1.1.0",
+  "description": "Dentiva Pro — Professional Offline Dental Clinic Management Software for Bangladesh",
+  "author": "Shohan Khan <helloiamshohan@gmail.com>",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "dist/main/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run typecheck && npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "node scripts/build-main.cjs --prod",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,css,json,md,mjs}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,css,json,md,mjs}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "pack:win": "npm run build && electron-builder --win --publish never",
+    "pack:linux": "npm run build && electron-builder --linux --publish never",
+    "checksums": "node scripts/checksums.mjs",
+    "release:local": "npm run pack:win && npm run checksums",
+    "audit:static": "node scripts/static-audit.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "11.10.0"
+  },
+  "devDependencies": {
+    "@fontsource/inter": "5.3.0",
+    "@fontsource/noto-sans-bengali": "5.3.0",
+    "@noble/hashes": "2.4.0",
+    "@playwright/test": "1.63.0",
+    "@tanstack/react-query": "5.104.0",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "22.10.2",
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
+    "@typescript-eslint/eslint-plugin": "8.70.1",
+    "@typescript-eslint/parser": "8.70.1",
+    "@vitejs/plugin-react": "4.7.0",
+    "electron": "37.10.3",
+    "electron-builder": "25.1.8",
+    "esbuild": "0.25.0",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "prettier": "3.4.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.30.6",
+    "typescript": "5.9.3",
+    "vite": "5.4.21",
+    "vitest": "2.1.9",
+    "yauzl": "3.2.0",
+    "yazl": "3.3.1",
+    "zod": "3.25.76"
+  },
+  "build": {
+    "appId": "com.dentivapro.desktop",
+    "productName": "Dentiva Pro",
+    "copyright": "Copyright © 2026 Shohan Khan",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/main/**",
+      "dist/preload/**",
+      "dist/renderer/**",
+      "assets/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "npmRebuild": true,
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Dentiva Pro",
+      "uninstallDisplayName": "Dentiva Pro",
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "artifactName": "Dentiva-Pro-Setup-v${version}.exe"
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+  }
+}
