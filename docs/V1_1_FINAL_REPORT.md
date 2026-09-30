@@ -6,15 +6,15 @@
 
 ## RELEASE STATUS
 
-**RELEASE READY — v1.1.0 is published.** GitHub Release `v1.1.0` with
-`Dentiva-Pro-Setup-v1.1.0.exe` (93,382,465 bytes) + `SHA256SUMS.txt`, published
-2026-09-30 by release run **36676031429** on windows-2022 — all gates green **before**
-packaging:
+**RELEASE READY — v1.1.0 is published.** GitHub Release `v1.1.0` (tag @ `4a925e7`) with
+`Dentiva-Pro-Setup-v1.1.0.exe` (93,381,089 bytes) + `SHA256SUMS.txt`, built and published on
+windows-2022 by release run **36677065338** — all gates green **before** packaging:
 
 | Gate | Platform | Result |
 |---|---|---|
-| PR CI on final product commit `f2573fd` (run on 1703ae3: success; 1703ae3→f2573fd is the FD-019 fix) | ubuntu | **PASS** — lint · typecheck · 154/154 tests + real-Electron E2E (activation gate, fixture journey, 900×520 short-viewport) |
-| Release run **36676031429** (tag `v1.1.0` @ `f2573fd`, windows-2022) | windows-2022 | **PASS** — Gate 1 lint · Gate 2 typecheck · **Gate 3 all 154 tests** · Gate 4 build + NSIS package · SHA-256 checksums · artifact upload · GitHub Release |
+| PR CI on the product commits (`9b50de7` run 36610276411; `700fb8f`; `1703ae3`; `4a925e7`) | ubuntu | **PASS** — lint · typecheck · 154/154 tests + real-Electron E2E (activation gate, fixture journey, 900×520 short-viewport) |
+| Release run 36676031429 (tag @ `f2573fd`, windows-2022) | windows-2022 | **PASS** — Gate 1 lint · Gate 2 typecheck · **Gate 3 all 154 tests** (FD-019 fix proven) · Gate 4 build + NSIS · checksums · release |
+| Release run **36677065338** (tag @ `4a925e7` — final tree, windows-2022) | windows-2022 | **PASS** — same gates; **this is the published artifact set** (NSIS embeds build timestamps, so the republished installer bytes differ from run 36676031429 — hashes below are the published ones) |
 | Same 154-test suite | this sandbox (linux) | **PASS 154/154** |
 
 FD-019 (Windows-only test failure) was root-caused from the instrumented run's check-run
@@ -25,9 +25,13 @@ hidden on Linux (POSIX renames open files). Fixed in `f2573fd` (close on failed 
 bounded rename retry); the startup-recovery regression tests fail on windows-2022 without
 the fix and pass with it.
 
-Installer integrity: SHA-256 `8f59bb38ac60e0ef18e3ac7cd361e65a1d021e4544947dea1cc5b26681c28a0d`
-(GitHub upload-time digest of the published asset; `SHA256SUMS.txt` SHA-256
-`318135a37c0106a5fbe4fed0338b379fdcc7685da35943e154c154ba36972ac9`). The sandbox's egress
+Installer integrity (the **published** asset set from run 36677065338):
+`Dentiva-Pro-Setup-v1.1.0.exe` SHA-256 `cf1b18de6743b9456e6690206890c981c35ea8108514c6965694be1788c4154c`
+(93,381,089 bytes; GitHub upload-time digest of the published asset) and `SHA256SUMS.txt`
+SHA-256 `6e09112d539162e9d9e7e7b5b73cff2cdcc921934e060022278e9e2e9a2a1284`. The earlier
+run 36676031429 published a byte-different build (exe SHA-256 `8f59bb38…c28a0d`,
+93,382,465 B) which the final run superseded — NSIS embeds build timestamps, so the
+authoritative checksums are always the live release's `SHA256SUMS.txt`. The sandbox's egress
 to GitHub's asset CDN is blocked, so the byte-level re-hash is executed by the field protocol
 (step-by-step with `certutil -hashfile`) rather than claimed here.
 
@@ -106,15 +110,18 @@ Windows release gates (all green on the tagged commit).
 | Release run 36611121395 (tag v1.1.0 @ 9b50de7, windows-2022) | **FAIL at Gate 3 (tests)** — surfaced FD-019 (fixed in `f2573fd`) |
 | Release run 36675420978 (tag v1.1.0 @ 1703ae3, windows-2022) | **FAIL at Gate 3** — instrumented diagnostics identified the exact failure (EBUSY rename in `startup-recovery`) |
 | Release run 36676031429 (tag v1.1.0 @ `f2573fd`, windows-2022) | **PASS** — all gates green (lint · typecheck · 154/154 tests · build+NSIS · checksums · release) |
+| Release run 36677065338 (tag v1.1.0 @ `4a925e7` — final tree, windows-2022) | **PASS** — same gates; **published artifact set** (hashes above) |
 
 ## Artifacts & publication (tag `v1.1.0`)
 
-**PUBLISHED** (release run 36676031429, windows-2022, all gates green before packaging):
+**PUBLISHED** (release run **36677065338**, tag `v1.1.0` @ `4a925e7`, windows-2022, all gates
+green before packaging):
 
-1. `Dentiva-Pro-Setup-v1.1.0.exe` — 93,382,465 bytes, SHA-256
-   `8f59bb38ac60e0ef18e3ac7cd361e65a1d021e4544947dea1cc5b26681c28a0d` (NSIS, windows-2022)
-2. `SHA256SUMS.txt` — SHA-256 `318135a37c0106a5fbe4fed0338b379fdcc7685da35943e154c154ba36972ac9`
-   (verify before running — installer is unsigned, FD-016)
+1. `Dentiva-Pro-Setup-v1.1.0.exe` — **93,381,089 bytes**, SHA-256
+   `cf1b18de6743b9456e6690206890c981c35ea8108514c6965694be1788c4154c` (NSIS, windows-2022)
+2. `SHA256SUMS.txt` — SHA-256 `6e09112d539162e9d9e7e7b5b73cff2cdcc921934e060022278e9e2e9a2a1284`
+   (verify before running — installer is unsigned, FD-016; NSIS embeds build timestamps, so a
+   re-run publishes byte-different builds — always check the live `SHA256SUMS.txt`)
 3. GitHub Release `v1.1.0` with both artifacts + fallback Actions artifact
    (`Dentiva-Pro-Setup-v1.1.0.exe`, `test-run-log`, `pack-win-log`)
 4. PR from `arena/01a0edf6-dentiva-official-application` → `main` with green checks
@@ -143,5 +150,5 @@ Windows release gates (all green on the tagged commit).
       real-code journey when secret present)
 - [x] CI green on final product commit `9b50de7` (run 36610276411: verify + E2E PASS)
 - [x] Windows release Gate 3 green (FD-019 fixed in `f2573fd`; run 36676031429: 154/154 on windows-2022)
-- [x] Tag build + GitHub Release (run 36676031429: installer + SHA256SUMS published, hashes recorded above)
+- [x] Tag build + GitHub Release (final run 36677065338 @ 4a925e7: installer + SHA256SUMS published, hashes recorded above)
 - [ ] Field validation per protocol (post-release — owner/field step, 3 devices)

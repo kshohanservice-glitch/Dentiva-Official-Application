@@ -5,8 +5,8 @@
 ## Current phase
 **Phase 10 — v1.1.0 PUBLISHED. Remaining: post-release field validation (owner/field step).**
 
-v1.1.0 shipped 2026-09-30: GitHub Release with `Dentiva-Pro-Setup-v1.1.0.exe` (93,382,465 B)
-+ `SHA256SUMS.txt`, release run **36676031429** all gates green on windows-2022 (incl. 154/154
+v1.1.0 shipped 2026-09-30: GitHub Release with `Dentiva-Pro-Setup-v1.1.0.exe` (93,381,089 B)
++ `SHA256SUMS.txt`, release run **36677065338** all gates green on windows-2022 (incl. 154/154
 tests — FD-019, a Windows-only startup crash-loop, was root-caused from the instrumented
 run 36675420978's check-summary and fixed in `f2573fd`).
 
@@ -137,9 +137,13 @@ run 36675420978's check-summary and fixed in `f2573fd`).
     Local: tsc 0, eslint 0, 154/154, static-audit PASS, 16-digit guard PASS.
   - Re-tag v1.1.0 @ `f2573fd` → **run 36676031429 (windows-2022): ALL GATES PASS** (lint ·
     typecheck · 154/154 tests · build+NSIS · checksums · release).
-  - **GitHub Release v1.1.0 published**: `Dentiva-Pro-Setup-v1.1.0.exe` (93,382,465 bytes,
-    SHA-256 `8f59bb38ac60e0ef18e3ac7cd361e65a1d021e4544947dea1cc5b26681c28a0d`) +
-    `SHA256SUMS.txt` (SHA-256 `318135a37c0106a5fbe4fed0338b379fdcc7685da35943e154c154ba36972ac9`).
+  - Final docs commit `4a925e7` (release evidence) → re-tag v1.1.0 @ `4a925e7` →
+    **run 36677065338 (windows-2022): ALL GATES PASS** — this is the final tree; no further
+    re-tag (NSIS embeds build timestamps, so each rebuild republishes byte-different builds).
+  - **GitHub Release v1.1.0 published** (from run 36677065338): `Dentiva-Pro-Setup-v1.1.0.exe`
+    (93,381,089 bytes, SHA-256 `cf1b18de6743b9456e6690206890c981c35ea8108514c6965694be1788c4154c`)
+    + `SHA256SUMS.txt` (SHA-256 `6e09112d539162e9d9e7e7b5b73cff2cdcc921934e060022278e9e2e9a2a1284`).
+    (The superseded run 36676031429 build was 93,382,465 B / `8f59bb38…c28a0d`.)
   - Sandbox egress to GitHub's asset CDN is blocked, so the byte-level re-hash of the 93 MB
     exe is deferred to the field protocol (`certutil -hashfile`), not claimed here.
 
